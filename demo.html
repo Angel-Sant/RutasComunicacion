@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#1f5fa9">
+<title>Transporte Bilbao — Auxiliares</title>
+<style>
+:root{
+  --azul:#1f5fa9; --azul-osc:#164a85; --tinta:#1c2430; --suave:#5d6875;
+  --linea:#dde3ea; --ok:#1d7a4c; --no:#b02525; --amb:#b5730c; --fondo:#f2f5f8;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  background:var(--fondo); color:var(--tinta); font-size:17px; line-height:1.4;
+  padding-bottom:40px;
+}
+.oculto{display:none !important;}
+header{
+  background:var(--azul); color:#fff; padding:14px 16px;
+  position:sticky; top:0; z-index:10;
+}
+header .t{font-size:15px; opacity:.85;}
+header .r{font-size:22px; font-weight:700;}
+.wrap{padding:16px; max-width:520px; margin:0 auto;}
+.tarjeta{background:#fff; border-radius:14px; padding:18px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,.08);}
+h2{font-size:20px; margin:0 0 10px;}
+label{display:block; font-size:15px; color:var(--suave); margin-bottom:6px;}
+input[type=text],input[type=password],textarea{
+  width:100%; padding:16px; font-size:20px; border:2px solid var(--linea);
+  border-radius:12px; font-family:inherit;
+}
+input:focus,textarea:focus{outline:none; border-color:var(--azul);}
+button{
+  width:100%; padding:18px; font-size:20px; font-weight:700; border:none;
+  border-radius:14px; color:#fff; background:var(--azul); margin-top:12px;
+  font-family:inherit; cursor:pointer;
+}
+button:active{transform:scale(.98);}
+button.verde{background:var(--ok);}
+button.rojo{background:var(--no);}
+button.ambar{background:var(--amb);}
+button.gris{background:#7b8794;}
+button.chico{padding:12px; font-size:16px; font-weight:600;}
+button.linea{background:#fff; color:var(--azul); border:2px solid var(--azul);}
+.dir{font-size:17px; margin:10px 0;}
+.dir b{display:block; font-size:13px; color:var(--suave); text-transform:uppercase; letter-spacing:.5px; font-weight:600;}
+.cuenta{text-align:center; color:var(--suave); font-size:15px; margin-bottom:6px;}
+.nombre{font-size:30px; font-weight:800; line-height:1.15; margin:6px 0 10px;}
+.meta{font-size:16px; color:var(--suave); margin:4px 0;}
+.chip{display:inline-block; background:#eaf1f9; color:var(--azul); font-size:14px; font-weight:600; padding:4px 10px; border-radius:12px; margin-bottom:8px;}
+.chip.alerta{background:#fdf0dc; color:var(--amb);}
+.lista div{padding:10px 0; border-bottom:1px solid var(--linea); display:flex; justify-content:space-between; font-size:16px;}
+.lista div:last-child{border:none;}
+.lista .h{font-weight:600; color:var(--suave);}
+.est-si{color:var(--ok); font-weight:700;}
+.est-no{color:var(--no); font-weight:700;}
+.est-pend{color:var(--suave);}
+.motivos button{width:auto; display:inline-block; margin:5px 5px 0 0; padding:12px 14px; font-size:15px; background:#eef2f7; color:var(--tinta); font-weight:600;}
+.motivos button.sel{background:var(--azul); color:#fff;}
+.aviso{background:#fff8e8; border-left:4px solid var(--amb); padding:12px 14px; border-radius:0 10px 10px 0; font-size:15px; margin:12px 0;}
+.pie{text-align:center; font-size:13px; color:var(--suave); padding:20px;}
+.pendientes{font-size:13px; color:var(--amb); text-align:center; padding:6px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="t" id="hdSub">Transporte Bilbao · DEMOSTRACIÓN</div>
+  <div class="r" id="hdTit">Auxiliares</div>
+</header>
+
+<!-- ===== CARGA ===== -->
+<section id="pCarga" class="wrap">
+  <div class="tarjeta">
+    <h2>Cargando la información…</h2>
+    <p class="meta" id="cargaMsg">Un momento.</p>
+  </div>
+</section>
+
+<!-- ===== LOGIN ===== -->
+<section id="pLogin" class="wrap oculto">
+  <div class="tarjeta">
+    <h2>Escribe tu clave</h2>
+    <label>Ejemplo: ruta1</label>
+    <input type="text" id="clave" autocapitalize="none" autocorrect="off" inputmode="text" placeholder="ruta1">
+    <button id="btnEntrar">ENTRAR</button>
+    <div class="aviso" style="margin-top:16px;background:#eef2f7;border-left-color:#1f5fa9">
+      <strong>Prueba con:</strong> ruta1 (2 auxiliares y 3 niños) · ruta2 · ruta3 · ruta4 · ruta5<br>
+      Los nombres y teléfonos son inventados. Nada de lo que toques se envía a nadie.
+    </div>
+    <p class="meta" id="origenDatos" style="margin-top:12px;font-size:13px"></p>
+    <p id="errLogin" style="color:var(--no); font-weight:600; margin-top:10px;" class="oculto">Clave incorrecta. Revisa e intenta otra vez.</p>
+  </div>
+</section>
+
+<!-- ===== ¿QUIÉN ERES? ===== -->
+<section id="pQuien" class="wrap oculto">
+  <div class="tarjeta">
+    <h2>¿Quién va hoy?</h2>
+    <div id="listaAux"></div>
+  </div>
+</section>
+
+<!-- ===== TURNO ===== -->
+<section id="pTurno" class="wrap oculto">
+  <div class="tarjeta">
+    <h2 id="saludo">Buenos días</h2>
+    <p class="meta">¿Qué recorrido vas a hacer?</p>
+    <button class="verde" id="btnManana">MAÑANA — recoger niños</button>
+    <button class="ambar" id="btnTarde">TARDE — llevar a casa</button>
+  </div>
+</section>
+
+<!-- ===== CONFIRMAR RUTA ===== -->
+<section id="pRuta" class="wrap oculto">
+  <div class="tarjeta">
+    <h2 id="ruTitulo">Ruta 1</h2>
+    <div class="dir"><b>Comienza en</b><span id="ruIni"></span></div>
+    <div class="dir"><b>Termina en</b><span id="ruFin"></span></div>
+    <p class="meta" id="ruConteo"></p>
+    <div id="ruExcep"></div>
+    <button class="verde" id="btnComenzar">COMENZAR RUTA</button>
+    <button class="gris chico" id="btnSalir1">Salir</button>
+  </div>
+</section>
+
+<!-- ===== NIÑO EN TURNO ===== -->
+<section id="pNino" class="wrap oculto">
+  <div class="tarjeta">
+    <div class="cuenta" id="nnCuenta"></div>
+    <div id="nnChip"></div>
+    <div class="nombre" id="nnNombre"></div>
+    <div class="meta" id="nnDir"></div>
+    <div class="meta" id="nnRef"></div>
+    <div class="meta" id="nnTutor"></div>
+    <button class="verde" id="btnSubio">SUBIÓ</button>
+    <button class="rojo" id="btnNoSubio">NO SUBIÓ</button>
+    <button class="gris chico" id="btnDeshacer">Corregir el anterior</button>
+  </div>
+  <div class="pendientes" id="nnPend"></div>
+</section>
+
+<!-- ===== AVISAR AL SIGUIENTE ===== -->
+<section id="pAviso" class="wrap oculto">
+  <div class="tarjeta">
+    <h2>Avisar al siguiente</h2>
+    <p class="meta">Ahora sigue:</p>
+    <div class="nombre" id="avNombre"></div>
+    <div class="meta" id="avDir"></div>
+    <button class="verde" id="btnWhats">AVISAR POR WHATSAPP</button>
+    <button class="linea chico" id="btnSaltar">Continuar sin avisar</button>
+  </div>
+</section>
+
+<!-- ===== CIERRE ===== -->
+<section id="pCierre" class="wrap oculto">
+  <div class="tarjeta">
+    <h2 id="ciTitulo">Cerrar la ruta</h2>
+    <p class="meta" id="ciSub"></p>
+    <label>¿Cómo estuvo el recorrido?</label>
+    <div class="motivos" id="motivos"></div>
+    <label style="margin-top:14px;">Otro comentario (opcional)</label>
+    <textarea id="comentario" rows="3" placeholder="Puedes usar el micrófono del teclado"></textarea>
+    <button class="verde" id="btnCerrar">LLEGAMOS — CERRAR RUTA</button>
+  </div>
+</section>
+
+<!-- ===== RESUMEN ===== -->
+<section id="pResumen" class="wrap oculto">
+  <div class="tarjeta">
+    <h2>Ruta terminada</h2>
+    <p class="meta" id="reSub"></p>
+    <div class="lista" id="reLista"></div>
+  </div>
+  <div class="tarjeta">
+    <h2>Aviso a los papás</h2>
+    <div class="aviso" id="reAviso">El envío automático de correos se activa en la siguiente fase. Por ahora puedes copiar el reporte y mandarlo tú.</div>
+    <button id="btnCopiar">COPIAR REPORTE</button>
+    <button class="gris" id="btnTerminar">TERMINAR</button>
+  </div>
+  <div class="pie">Los datos quedan guardados en este celular aunque no haya señal.</div>
+</section>
+
+<script>
+/* ============================================================
+   Los datos vienen del panel de coordinación (admin.html).
+   Orden de búsqueda: Firebase -> datos.json -> copia local.
+   ============================================================ */
+var FIREBASE_URL = "";   /* ej: https://rutas-bilbao-default-rtdb.firebaseio.com */
+
+var D = null;
+var MOTIVOS = ["Sin novedad","Tráfico pesado","Retraso por lluvia","Un niño se sintió mal","Se esperó a un alumno"];
+var LETRA_DIA = ["D","L","M","X","J","V","S"];
+
+var S = { ruta:null, rutaNum:null, aux:null, turno:null, lista:[], idx:0, inicio:null, fin:null, motivo:"", comentario:"" };
+
+function $(id){ return document.getElementById(id); }
+function ver(id){
+  ["pCarga","pLogin","pQuien","pTurno","pRuta","pNino","pAviso","pCierre","pResumen"].forEach(function(p){
+    var el = $(p); if(el) el.classList.add("oculto");
+  });
+  $(id).classList.remove("oculto");
+  window.scrollTo(0,0);
+}
+function hoy(){ var d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function diaHoy(){ return LETRA_DIA[new Date().getDay()]; }
+function hora(ts){ var d=new Date(ts); var h=d.getHours(), m=String(d.getMinutes()).padStart(2,"0");
+  var ap = h<12 ? "a.m." : "p.m."; var h12 = h%12; if(h12===0) h12=12; return h12+":"+m+" "+ap; }
+function guardar(){ try{ localStorage.setItem("tb_sesion", JSON.stringify(S)); }catch(e){} }
+function guardarRecorrido(){
+  try{
+    var h = JSON.parse(localStorage.getItem("tb_historial")||"[]");
+    h.push({fecha:hoy(), ruta:S.rutaNum, aux:S.aux, turno:S.turno, inicio:S.inicio, fin:S.fin,
+            motivo:S.motivo, comentario:S.comentario, ninos:S.lista, enviado:false});
+    localStorage.setItem("tb_historial", JSON.stringify(h));
+  }catch(e){}
+}
+
+/* ---------- carga de datos ---------- */
+function usarDatos(d, origen){
+  D = d;
+  try{ localStorage.setItem("tb_datos_cache", JSON.stringify(d)); }catch(e){}
+  $("origenDatos").textContent = origen;
+  ver("pLogin");
+}
+function cargarLocal(){
+  try{
+    var c = localStorage.getItem("tb_datos_cache") || localStorage.getItem("tb_datos");
+    if(c){ usarDatos(JSON.parse(c), "Datos guardados en este celular"); return true; }
+  }catch(e){}
+  return false;
+}
+var DEMO = {
+ "actualizado": "2026-09-01T12:00:00.000Z",
+ "colegio": {
+  "nombre": "Colegio Bilbao",
+  "direccion": "Tlalmimilolpan 9, San Bartolo Ameyalco",
+  "correo": "avisos@bilbao.edu.mx"
+ },
+ "rutas": {
+  "1": {
+   "clave": "ruta1",
+   "cupo": 12,
+   "inicio": "Av. Toluca 45, Olivar de los Padres",
+   "auxiliares": "Carmen López, Rosa Méndez"
+  },
+  "2": {
+   "clave": "ruta2",
+   "cupo": 18,
+   "inicio": "Camino Real 120, Contadero",
+   "auxiliares": "Guadalupe Sánchez"
+  },
+  "3": {
+   "clave": "ruta3",
+   "cupo": 18,
+   "inicio": "Vasco de Quiroga 900",
+   "auxiliares": "Martha Rivas"
+  },
+  "4": {
+   "clave": "ruta4",
+   "cupo": 18,
+   "inicio": "Santa Fe 1500",
+   "auxiliares": "Elena Navarro"
+  },
+  "5": {
+   "clave": "ruta5",
+   "cupo": 36,
+   "inicio": "Av. Centenario 55",
+   "auxiliares": "Josefina Ruiz"
+  }
+ },
+ "alumnos": [
+  {
+   "id": "a1",
+   "nombre": "Sofía Ramírez",
+   "ruta": "1",
+   "orden": 1,
+   "dirRec": "Av. Toluca 45, Olivar de los Padres",
+   "ref": "Portón blanco",
+   "dirEnt": "",
+   "tutor": "Laura (mamá)",
+   "tel": "5512345678",
+   "email": "laura@correo.com",
+   "dias": [
+    "L",
+    "M",
+    "X",
+    "J",
+    "V"
+   ],
+   "am": true,
+   "pm": true
+  },
+  {
+   "id": "a2",
+   "nombre": "Diego Herrera",
+   "ruta": "1",
+   "orden": 2,
+   "dirRec": "Calle Pino 12, Olivar de los Padres",
+   "ref": "Frente a la tienda",
+   "dirEnt": "",
+   "tutor": "Marco (papá)",
+   "tel": "5587654321",
+   "email": "marco@correo.com",
+   "dias": [
+    "L",
+    "M",
+    "J"
+   ],
+   "am": true,
+   "pm": false
+  },
+  {
+   "id": "a3",
+   "nombre": "Valeria Cruz",
+   "ruta": "1",
+   "orden": 3,
+   "dirRec": "Cda. San Jacinto 8",
+   "ref": "Reja verde",
+   "dirEnt": "Calle Morelos 22, casa de la abuela",
+   "tutor": "Ana (mamá)",
+   "tel": "5511223344",
+   "email": "ana@correo.com",
+   "dias": [
+    "L",
+    "M",
+    "X",
+    "J",
+    "V"
+   ],
+   "am": true,
+   "pm": true
+  },
+  {
+   "id": "b1",
+   "nombre": "Emiliano Ortiz",
+   "ruta": "2",
+   "orden": 1,
+   "dirRec": "Camino Real 120, Contadero",
+   "ref": "Casa amarilla",
+   "dirEnt": "",
+   "tutor": "Paty (mamá)",
+   "tel": "5599887766",
+   "email": "paty@correo.com",
+   "dias": [
+    "L",
+    "M",
+    "X",
+    "J",
+    "V"
+   ],
+   "am": true,
+   "pm": true
+  },
+  {
+   "id": "b2",
+   "nombre": "Renata Solís",
+   "ruta": "2",
+   "orden": 2,
+   "dirRec": "Av. Juárez 300",
+   "ref": "Junto a la farmacia",
+   "dirEnt": "",
+   "tutor": "Jorge (papá)",
+   "tel": "5566778899",
+   "email": "jorge@correo.com",
+   "dias": [
+    "X",
+    "J",
+    "V"
+   ],
+   "am": false,
+   "pm": true
+  },
+  {
+   "id": "c1",
+   "nombre": "Mateo Aguilar",
+   "ruta": "3",
+   "orden": 1,
+   "dirRec": "Vasco de Quiroga 900",
+   "ref": "Torre B",
+   "dirEnt": "",
+   "tutor": "Silvia (mamá)",
+   "tel": "5544332211",
+   "email": "silvia@correo.com",
+   "dias": [
+    "L",
+    "M",
+    "X",
+    "J",
+    "V"
+   ],
+   "am": true,
+   "pm": true
+  },
+  {
+   "id": "d1",
+   "nombre": "Camila Torres",
+   "ruta": "4",
+   "orden": 1,
+   "dirRec": "Santa Fe 1500",
+   "ref": "Caseta de vigilancia",
+   "dirEnt": "",
+   "tutor": "Hugo (papá)",
+   "tel": "5522113344",
+   "email": "hugo@correo.com",
+   "dias": [
+    "L",
+    "M",
+    "X",
+    "J",
+    "V"
+   ],
+   "am": true,
+   "pm": true
+  },
+  {
+   "id": "e1",
+   "nombre": "Bruno Lara",
+   "ruta": "5",
+   "orden": 1,
+   "dirRec": "Av. Centenario 55",
+   "ref": "Edificio rojo",
+   "dirEnt": "",
+   "tutor": "Cecilia (mamá)",
+   "tel": "5533445566",
+   "email": "cecilia@correo.com",
+   "dias": [
+    "L",
+    "M",
+    "X",
+    "J",
+    "V"
+   ],
+   "am": true,
+   "pm": true
+  }
+ ],
+ "excepciones": {
+  "2026-09-01": [
+   {
+    "alumno": "a3",
+    "tipo": "cambia_parada",
+    "dir": "Calle Morelos 22, casa de la abuela"
+   },
+   {
+    "alumno": "b2",
+    "tipo": "no_asiste"
+   }
+  ]
+ }
+};
+
+function iniciar(){
+  /* MODO DEMOSTRACIÓN: los datos van dentro de este archivo.
+     En la versión real esta función busca en Firebase o en datos.json. */
+  var copia = JSON.parse(JSON.stringify(DEMO));
+  var d = new Date();
+  var f = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  var claves = Object.keys(copia.excepciones);
+  if(claves.length && claves[0] !== f){ copia.excepciones[f] = copia.excepciones[claves[0]]; }
+  D = copia;
+  $("origenDatos").textContent = "Modo demostración · datos de ejemplo";
+  ver("pLogin");
+}
+
+/* ---------- armar la lista de un recorrido ---------- */
+function excepcionesDeHoy(){
+  var m = {};
+  var lista = (D.excepciones && D.excepciones[hoy()]) || [];
+  lista.forEach(function(e){ m[e.alumno] = e; });
+  return m;
+}
+function construirLista(rutaNum, turno){
+  var exc = excepcionesDeHoy();
+  var dia = diaHoy();
+  var res = [];
+  D.alumnos.forEach(function(a){
+    var e = exc[a.id];
+    if(e && e.tipo === "no_asiste") return;
+    if(e && e.tipo === "solo_am" && turno === "tarde") return;
+    if(e && e.tipo === "solo_pm" && turno === "manana") return;
+    var ruta = (e && e.tipo === "cambia_ruta") ? e.ruta : a.ruta;
+    if(String(ruta) !== String(rutaNum)) return;
+    /* demo: no se filtra por día para que siempre haya lista */
+    if(turno === "manana" && a.am === false) return;
+    if(turno === "tarde" && a.pm === false) return;
+    var dir = (turno === "manana") ? a.dirRec : (a.dirEnt || a.dirRec);
+    if(e && e.tipo === "cambia_parada") dir = e.dir;
+    res.push({
+      id:a.id, nombre:a.nombre, dir:dir, ref:a.ref, tutor:a.tutor,
+      tel:a.tel, email:a.email, cambio: e ? true : false,
+      orden:(a.orden||99), estado:null, ts:null
+    });
+  });
+  res.sort(function(x,y){ return x.orden - y.orden; });
+  if(turno === "tarde") res.reverse();
+  return res;
+}
+/* ---------- login ---------- */
+$("btnEntrar").addEventListener("click", function(){
+  var c = $("clave").value.trim().toLowerCase().replace(/\s+/g,"");
+  var num = null;
+  Object.keys(D.rutas).forEach(function(k){
+    if((D.rutas[k].clave||"").toLowerCase().replace(/\s+/g,"") === c) num = k;
+  });
+  if(!num){ $("errLogin").classList.remove("oculto"); return; }
+  $("errLogin").classList.add("oculto");
+  S.rutaNum = num; S.ruta = D.rutas[num];
+  var aux = (S.ruta.auxiliares||"").split(",").map(function(x){ return x.trim(); }).filter(Boolean);
+  if(aux.length <= 1){ S.aux = aux[0] || ("Ruta " + num); irTurno(); return; }
+  var cont = $("listaAux"); cont.innerHTML = "";
+  aux.forEach(function(nombre){
+    var b = document.createElement("button");
+    b.textContent = nombre; b.className = "linea";
+    b.addEventListener("click", function(){ S.aux = nombre; irTurno(); });
+    cont.appendChild(b);
+  });
+  ver("pQuien");
+});
+$("clave").addEventListener("keydown", function(e){ if(e.key==="Enter") $("btnEntrar").click(); });
+iniciar();
+
+function irTurno(){
+  var h = new Date().getHours();
+  $("saludo").textContent = (h<12?"Buenos días, ":"Buenas tardes, ") + S.aux.split(" ")[0];
+  $("hdSub").textContent = "Ruta " + S.rutaNum;
+  $("hdTit").textContent = S.aux;
+  ver("pTurno");
+}
+$("btnManana").addEventListener("click", function(){ S.turno="manana"; armarRuta(); });
+$("btnTarde").addEventListener("click", function(){ S.turno="tarde"; armarRuta(); });
+
+/* ---------- armar lista del día ---------- */
+function armarRuta(){
+  S.lista = construirLista(S.rutaNum, S.turno);
+  S.idx = 0;
+  var esManana = S.turno === "manana";
+  var escuela = D.colegio.nombre + " — " + D.colegio.direccion;
+  $("ruTitulo").textContent = "Ruta " + S.rutaNum + " · " + (esManana ? "Mañana" : "Tarde");
+  $("ruIni").textContent = esManana ? (S.ruta.inicio || S.lista.length && S.lista[0].dir || "—") : escuela;
+  $("ruFin").textContent = esManana ? escuela : (S.lista.length ? S.lista[S.lista.length-1].dir : "—");
+  $("ruConteo").textContent = S.lista.length + (S.lista.length === 1 ? " niño hoy" : " niños hoy");
+  var cambios = S.lista.filter(function(n){ return n.cambio; }).length;
+  $("ruExcep").innerHTML = cambios
+    ? '<div class="aviso">Hay ' + cambios + ' cambio(s) para hoy en esta ruta. Aparecen marcados en su tarjeta.</div>'
+    : "";
+  if(!S.lista.length){
+    $("ruExcep").innerHTML = '<div class="aviso">Hoy no hay niños asignados a este recorrido. Confirma con coordinación antes de salir.</div>';
+  }
+  ver("pRuta");
+}
+
+$("btnSalir1").addEventListener("click", function(){ location.reload(); });
+
+$("btnComenzar").addEventListener("click", function(){
+  S.inicio = Date.now(); guardar(); mostrarNino();
+});
+
+/* ---------- niño en turno ---------- */
+function mostrarNino(){
+  if(S.idx >= S.lista.length){ irCierre(); return; }
+  var n = S.lista[S.idx];
+  var esManana = S.turno === "manana";
+  $("nnCuenta").textContent = "Parada " + (S.idx+1) + " de " + S.lista.length + " · " + hora(Date.now());
+  $("nnChip").innerHTML = '<span class="chip">' + (esManana ? "Recoger" : "Entregar") + "</span>" +
+    (n.cambio ? ' <span class="chip alerta">CAMBIO HOY</span>' : "");
+  $("nnNombre").textContent = n.nombre;
+  $("nnDir").textContent = n.dir;
+  $("nnRef").textContent = n.ref ? "Referencia: " + n.ref : "";
+  $("nnTutor").textContent = n.tutor;
+  $("btnSubio").textContent = esManana ? "SUBIÓ" : "BAJÓ / ENTREGADO";
+  $("btnNoSubio").textContent = esManana ? "NO SUBIÓ" : "NO SE ENTREGÓ";
+  $("btnDeshacer").classList.toggle("oculto", S.idx === 0);
+  var faltan = S.lista.length - S.idx - 1;
+  $("nnPend").textContent = faltan > 0 ? "Faltan " + faltan + " después de este" : "Es el último";
+  ver("pNino");
+}
+
+function marcar(estado){
+  var n = S.lista[S.idx];
+  n.estado = estado; n.ts = Date.now();
+  guardar();
+  S.idx++;
+  if(S.idx < S.lista.length) mostrarAviso(); else irCierre();
+}
+$("btnSubio").addEventListener("click", function(){ marcar("si"); });
+$("btnNoSubio").addEventListener("click", function(){ marcar("no"); });
+$("btnDeshacer").addEventListener("click", function(){
+  if(S.idx > 0){ S.idx--; var n = S.lista[S.idx]; n.estado = null; n.ts = null; guardar(); mostrarNino(); }
+});
+
+/* ---------- aviso al siguiente ---------- */
+function mostrarAviso(){
+  var n = S.lista[S.idx];
+  $("avNombre").textContent = n.nombre;
+  $("avDir").textContent = n.dir;
+  ver("pAviso");
+}
+$("btnWhats").addEventListener("click", function(){
+  var n = S.lista[S.idx];
+  var esManana = S.turno === "manana";
+  var saludo = new Date().getHours() < 12 ? "Buenos días" : "Buenas tardes";
+  var texto = saludo + ". Le informamos del " + D.colegio.nombre + " que la Ruta " + S.rutaNum +
+    " va en camino y " + n.nombre.split(" ")[0] + " es el siguiente. " +
+    (esManana ? "Por favor esté listo en " : "Estamos por llegar a ") + n.dir + ".";
+  window.open("https://wa.me/" + n.tel + "?text=" + encodeURIComponent(texto), "_blank");
+  setTimeout(mostrarNino, 400);
+});
+$("btnSaltar").addEventListener("click", mostrarNino);
+
+/* ---------- cierre ---------- */
+function irCierre(){
+  var esManana = S.turno === "manana";
+  $("ciTitulo").textContent = esManana ? "Llegada al colegio" : "Fin del recorrido";
+  var subs = S.lista.filter(function(n){ return n.estado === "si"; }).length;
+  $("ciSub").textContent = subs + " de " + S.lista.length + " niños atendidos.";
+  var cont = $("motivos"); cont.innerHTML = "";
+  MOTIVOS.forEach(function(m){
+    var b = document.createElement("button");
+    b.textContent = m;
+    b.addEventListener("click", function(){
+      Array.prototype.forEach.call(cont.children, function(x){ x.classList.remove("sel"); });
+      b.classList.add("sel"); S.motivo = m;
+    });
+    cont.appendChild(b);
+  });
+  ver("pCierre");
+}
+
+$("btnCerrar").addEventListener("click", function(){
+  S.fin = Date.now();
+  S.comentario = $("comentario").value.trim();
+  guardarRecorrido(); guardar();
+  mostrarResumen();
+});
+
+/* ---------- resumen ---------- */
+function textoReporte(){
+  var esManana = S.turno === "manana";
+  var l = [];
+  l.push("RUTA " + S.rutaNum + " · " + (esManana ? "Mañana" : "Tarde") + " · " + hoy());
+  l.push("Auxiliar: " + S.aux);
+  l.push((esManana ? "Salida: " : "Salida del colegio: ") + hora(S.inicio));
+  l.push((esManana ? "Llegada al colegio: " : "Fin del recorrido: ") + hora(S.fin));
+  l.push("");
+  S.lista.forEach(function(n){
+    if(n.estado === "si"){
+      var mins = Math.round((S.fin - n.ts)/60000);
+      l.push(n.nombre + " — " + (esManana ? "abordó" : "bajó") + " " + hora(n.ts) +
+             (esManana ? " · a bordo " + mins + " min" : ""));
+    } else {
+      l.push(n.nombre + " — no abordó");
+    }
+  });
+  l.push("");
+  l.push("Comentario: " + (S.motivo || "Sin novedad") + (S.comentario ? " — " + S.comentario : ""));
+  return l.join("\n");
+}
+
+function mostrarResumen(){
+  var esManana = S.turno === "manana";
+  var total = Math.round((S.fin - S.inicio)/60000);
+  $("reSub").textContent = "Duración total: " + total + " minutos · " + hora(S.inicio) + " a " + hora(S.fin);
+  var cont = $("reLista"); cont.innerHTML = "";
+  S.lista.forEach(function(n){
+    var d = document.createElement("div");
+    var izq = document.createElement("span"); izq.textContent = n.nombre;
+    var der = document.createElement("span");
+    if(n.estado === "si"){
+      der.className = "est-si";
+      der.textContent = hora(n.ts) + (esManana ? " · " + Math.round((S.fin-n.ts)/60000) + " min" : "");
+    } else { der.className = "est-no"; der.textContent = "No abordó"; }
+    d.appendChild(izq); d.appendChild(der); cont.appendChild(d);
+  });
+  ver("pResumen");
+}
+
+$("btnCopiar").addEventListener("click", function(){
+  var t = textoReporte();
+  if(navigator.clipboard){ navigator.clipboard.writeText(t); }
+  $("btnCopiar").textContent = "REPORTE COPIADO";
+  setTimeout(function(){ $("btnCopiar").textContent = "COPIAR REPORTE"; }, 2000);
+});
+$("btnTerminar").addEventListener("click", function(){
+  try{ localStorage.removeItem("tb_sesion"); }catch(e){}
+  location.reload();
+});
+</script>
+</body>
+</html>
