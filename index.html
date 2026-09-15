@@ -132,6 +132,7 @@ button.linea{background:#fff; color:var(--azul); border:2px solid var(--azul);}
     <div class="meta" id="nnDir"></div>
     <div class="meta" id="nnRef"></div>
     <div class="meta" id="nnTutor"></div>
+    <button class="linea chico" id="btnMapa" style="margin-bottom:4px">VER EN EL MAPA</button>
     <button class="verde" id="btnSubio">SUBIÓ</button>
     <button class="rojo" id="btnNoSubio">NO SUBIÓ</button>
     <button class="gris chico" id="btnDeshacer">Corregir el anterior</button>
@@ -146,6 +147,7 @@ button.linea{background:#fff; color:var(--azul); border:2px solid var(--azul);}
     <p class="meta">Ahora sigue:</p>
     <div class="nombre" id="avNombre"></div>
     <div class="meta" id="avDir"></div>
+    <button class="linea chico" id="btnMapaSig" style="margin-bottom:4px">VER EN EL MAPA</button>
     <button class="verde" id="btnWhats">AVISAR POR WHATSAPP</button>
     <button class="linea chico" id="btnSaltar">Continuar sin avisar</button>
   </div>
@@ -270,9 +272,11 @@ function construirLista(rutaNum, turno){
     if(turno === "manana" && a.am === false) return;
     if(turno === "tarde" && a.pm === false) return;
     var dir = (turno === "manana") ? a.dirRec : (a.dirEnt || a.dirRec);
-    if(e && e.tipo === "cambia_parada") dir = e.dir;
+    var coord = (turno === "manana") ? (a.coordRec || "") : (a.coordEnt || a.coordRec || "");
+    if(!coord && a.lat && a.lng) coord = a.lat + "," + a.lng;
+    if(e && e.tipo === "cambia_parada"){ dir = e.dir; coord = e.coord || ""; }
     res.push({
-      id:a.id, nombre:a.nombre, dir:dir, ref:a.ref, tutor:a.tutor,
+      id:a.id, nombre:a.nombre, dir:dir, coord:coord, ref:a.ref, tutor:a.tutor,
       tel:a.tel, email:a.email, cambio: e ? true : false,
       orden:(a.orden||99), estado:null, ts:null
     });
@@ -353,6 +357,8 @@ function mostrarNino(){
   $("nnDir").textContent = n.dir;
   $("nnRef").textContent = n.ref ? "Referencia: " + n.ref : "";
   $("nnTutor").textContent = n.tutor;
+  $("btnMapa").classList.toggle("oculto", !n.coord && !n.dir);
+  $("btnMapa").textContent = n.coord ? "VER EN EL MAPA (punto exacto)" : "VER EN EL MAPA (por dirección)";
   $("btnSubio").textContent = esManana ? "SUBIÓ" : "BAJÓ / ENTREGADO";
   $("btnNoSubio").textContent = esManana ? "NO SUBIÓ" : "NO SE ENTREGÓ";
   $("btnDeshacer").classList.toggle("oculto", S.idx === 0);
@@ -379,6 +385,7 @@ function mostrarAviso(){
   var n = S.lista[S.idx];
   $("avNombre").textContent = n.nombre;
   $("avDir").textContent = n.dir;
+  $("btnMapaSig").classList.toggle("oculto", !n.coord && !n.dir);
   ver("pAviso");
 }
 $("btnWhats").addEventListener("click", function(){
@@ -392,6 +399,23 @@ $("btnWhats").addEventListener("click", function(){
   setTimeout(mostrarNino, 400);
 });
 $("btnSaltar").addEventListener("click", mostrarNino);
+
+
+/* ---------- abrir el mapa ---------- */
+function abrirMapa(n){
+  var destino;
+  if(n.coord){
+    destino = n.coord.replace(/\s+/g,"");
+  } else if(n.dir){
+    destino = encodeURIComponent(n.dir);
+  } else {
+    alert("Este alumno no tiene dirección ni coordenadas registradas. Avisa a coordinación.");
+    return;
+  }
+  window.open("https://www.google.com/maps/dir/?api=1&destination=" + destino + "&travelmode=driving", "_blank");
+}
+$("btnMapa").addEventListener("click", function(){ abrirMapa(S.lista[S.idx]); });
+$("btnMapaSig").addEventListener("click", function(){ abrirMapa(S.lista[S.idx]); });
 
 /* ---------- cierre ---------- */
 function irCierre(){
