@@ -96,7 +96,8 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
       <div><label>Nombre completo *</label><input id="fNombre" placeholder="Sofía Ramírez"></div>
       <div><label>Ruta de la mañana</label><select id="fRutaAM"></select></div>
       <div><label>Ruta de la tarde</label><select id="fRutaPM"></select></div>
-      <div><label>Orden de parada</label><input id="fOrden" type="number" min="1" placeholder="3"></div>
+      <div><label id="lbOrdenAM">Orden de parada (mañana)</label><input id="fOrdenAM" type="number" min="1" placeholder="3"></div>
+      <div><label id="lbOrdenPM">Orden de parada (tarde)</label><input id="fOrdenPM" type="number" min="1" placeholder="5"></div>
     </div>
     <div class="fila">
       <div><label>Sección *</label><select id="fSecc">
@@ -144,7 +145,7 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
     </div>
     <div style="overflow-x:auto">
       <table id="tabla">
-        <thead><tr><th>#</th><th>Nombre</th><th>Ruta</th><th>Dirección</th><th>Días</th><th>Turnos</th><th>Contacto / pendientes</th><th></th></tr></thead>
+        <thead><tr><th>Orden<br><span style="font-weight:400">AM / PM</span></th><th>Nombre</th><th>Ruta</th><th>Dirección</th><th>Días</th><th>Turnos</th><th>Contacto / pendientes</th><th></th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
@@ -354,7 +355,7 @@ function llenarSelectRutas(){
 function limpiarForm(){
   editandoId = null;
   $("fmTitulo").textContent = "Agregar alumno";
-  ["fNombre","fOrden","fDirRec","fRef","fDirEnt","fTutor","fTel","fEmail","fGrado","fCoordRec","fCoordEnt"].forEach(function(id){ $(id).value = ""; });
+  ["fNombre","fOrdenAM","fOrdenPM","fDirRec","fRef","fDirEnt","fTutor","fTel","fEmail","fGrado","fCoordRec","fCoordEnt"].forEach(function(id){ $(id).value = ""; });
   $("fAM").checked = true; $("fPM").checked = true;
   Array.prototype.forEach.call(document.querySelectorAll(".diaCheck"), function(c){ c.checked = true; });
   $("btnCancelar").classList.add("oculto");
@@ -373,7 +374,9 @@ $("btnGuardarAl").addEventListener("click", function(){
     rutaAM: $("fAM").checked ? $("fRutaAM").value : "",
     rutaPM: $("fPM").checked ? $("fRutaPM").value : "",
     ruta: $("fAM").checked ? $("fRutaAM").value : $("fRutaPM").value,
-    orden: parseInt($("fOrden").value,10) || 99,
+    ordenAM: parseInt($("fOrdenAM").value,10) || 99,
+    ordenPM: parseInt($("fOrdenPM").value,10) || 99,
+    orden: parseInt($("fOrdenAM").value,10) || parseInt($("fOrdenPM").value,10) || 99,
     seccion: $("fSecc").value,
     grado: $("fGrado").value.trim().toUpperCase(),
     dirRec: $("fDirRec").value.trim(),
@@ -423,7 +426,9 @@ function editar(id){
   if(!a) return;
   editandoId = id;
   $("fmTitulo").textContent = "Editando: " + a.nombre;
-  $("fNombre").value = a.nombre; $("fOrden").value = a.orden;
+  $("fNombre").value = a.nombre;
+  $("fOrdenAM").value = (a.ordenAM || a.orden || 99);
+  $("fOrdenPM").value = (a.ordenPM || a.orden || 99);
   $("fRutaAM").value = a.rutaAM || a.ruta || "1";
   $("fRutaPM").value = a.rutaPM || a.ruta || "1";
   $("fDirRec").value = a.dirRec; $("fRef").value = a.ref || ""; $("fDirEnt").value = a.dirEnt || "";
@@ -456,14 +461,16 @@ function pintarTabla(){
     return true;
   }).sort(function(a,b){
     if(a.ruta !== b.ruta) return a.ruta.localeCompare(b.ruta);
-    return a.orden - b.orden;
+    return (a.ordenAM || a.orden || 99) - (b.ordenAM || b.orden || 99);
   });
 
   var tb = $("tbody"); tb.innerHTML = "";
   lista.forEach(function(a){
     var tr = document.createElement("tr");
     function td(txt){ var c = document.createElement("td"); c.textContent = txt; tr.appendChild(c); return c; }
-    td(a.orden);
+    var oAM = a.ordenAM || a.orden || 99, oPM = a.ordenPM || a.orden || 99;
+    var txtO = (a.am ? (oAM === 99 ? "—" : oAM) : "") + (a.am && a.pm ? " / " : "") + (a.pm ? (oPM === 99 ? "—" : oPM) : "");
+    td(txtO);
     td(a.nombre);
     var rAM = a.rutaAM || (a.am ? a.ruta : ""), rPM = a.rutaPM || (a.pm ? a.ruta : "");
     var celdaR;
@@ -482,6 +489,20 @@ function pintarTabla(){
     var gpsBase = a.coordRec || (a.lat && a.lng ? a.lat + ", " + a.lng : "");
     if(a.am && !gpsBase) faltas.push("sin GPS mañana");
     if(a.pm && !a.coordEnt && !gpsBase) faltas.push("sin GPS tarde");
+    if(a.am){
+      var choqueAM = D.alumnos.filter(function(x){
+        return x.id !== a.id && x.am && (x.rutaAM||x.ruta) === (a.rutaAM||a.ruta) &&
+               (x.ordenAM||x.orden||99) === (a.ordenAM||a.orden||99) && (a.ordenAM||a.orden||99) !== 99;
+      }).length;
+      if(choqueAM) faltas.push("orden AM repetido");
+    }
+    if(a.pm){
+      var choquePM = D.alumnos.filter(function(x){
+        return x.id !== a.id && x.pm && (x.rutaPM||x.ruta) === (a.rutaPM||a.ruta) &&
+               (x.ordenPM||x.orden||99) === (a.ordenPM||a.orden||99) && (a.ordenPM||a.orden||99) !== 99;
+      }).length;
+      if(choquePM) faltas.push("orden PM repetido");
+    }
     if(faltas.length){
       var w = document.createElement("div");
       w.style.cssText = "color:#b5730c;font-size:12px;font-weight:600";
@@ -620,7 +641,7 @@ function pintarExcep(){
 }
 
 /* ======================= CSV ======================= */
-var COLS = ["nombre","seccion","grado","ruta_am","ruta_pm","orden","direccion_recogida","referencia","direccion_entrega","tutor","whatsapp","correo","coordenadas_recogida","coordenadas_entrega","dias","turnos"];
+var COLS = ["nombre","seccion","grado","ruta_am","ruta_pm","orden_am","orden_pm","direccion_recogida","referencia","direccion_entrega","tutor","whatsapp","correo","coordenadas_recogida","coordenadas_entrega","dias","turnos"];
 
 function descargar(nombre, contenido, tipo){
   var b = new Blob([contenido], {type: tipo});
@@ -632,8 +653,8 @@ function descargar(nombre, contenido, tipo){
 
 $("btnPlantilla").addEventListener("click", function(){
   var filas = [COLS.join(",")];
-  filas.push('Sofía Ramírez,PRIM,1RO,1,1,1,"Av. Toluca 45, Olivar de los Padres",Portón blanco,,Laura (mamá),5512345678,laura@correo.com,"19.3456, -99.2789",,LMXJV,AMPM');
-  filas.push('Diego Herrera,BACH,4TO,1,3,2,"Calle Pino 12",Frente a la tienda,,Marco (papá),5587654321,marco@correo.com,,,LMJ,AM');
+  filas.push('Sofía Ramírez,PRIM,1RO,1,1,1,3,"Av. Toluca 45, Olivar de los Padres",Portón blanco,,Laura (mamá),5512345678,laura@correo.com,"19.3456, -99.2789",,LMXJV,AMPM');
+  filas.push('Diego Herrera,BACH,4TO,1,3,2,1,"Calle Pino 12",Frente a la tienda,,Marco (papá),5587654321,marco@correo.com,,,LMJ,AM');
   descargar("plantilla-alumnos.csv", "\uFEFF" + filas.join("\n"), "text/csv;charset=utf-8");
 });
 
@@ -688,7 +709,9 @@ $("fileCsv").addEventListener("change", function(ev){
       D.alumnos.push({
         id: nuevoId(), nombre: nombre, ruta: ruta, rutaAM: rAM, rutaPM: rPM,
         seccion: (v("seccion").toUpperCase() || "PRIM"), grado: v("grado").toUpperCase(),
-        orden: parseInt(v("orden"),10) || 99,
+        ordenAM: parseInt(v("orden_am"),10) || 99,
+        ordenPM: parseInt(v("orden_pm"),10) || 99,
+        orden: parseInt(v("orden_am"),10) || parseInt(v("orden_pm"),10) || 99,
         dirRec: v("direccion_recogida"), ref: v("referencia"), dirEnt: v("direccion_entrega"),
         tutor: v("tutor"), tel: tel, email: v("correo"),
         coordRec: v("coordenadas_recogida"), coordEnt: v("coordenadas_entrega"),
@@ -798,6 +821,12 @@ function refrescarEtiquetas(){
   $("fRutaPM").disabled = !pm;
   $("fRutaAM").style.background = am ? "#fff" : "#f1f4f7";
   $("fRutaPM").style.background = pm ? "#fff" : "#f1f4f7";
+  $("fOrdenAM").disabled = !am;
+  $("fOrdenPM").disabled = !pm;
+  $("fOrdenAM").style.background = am ? "#fff" : "#f1f4f7";
+  $("fOrdenPM").style.background = pm ? "#fff" : "#f1f4f7";
+  $("lbOrdenAM").textContent = "Orden de parada (mañana)" + (am ? "" : " — no aplica");
+  $("lbOrdenPM").textContent = "Orden de parada (tarde)" + (pm ? "" : " — no aplica");
   $("fDirRec").style.background = am ? "#fff" : "#f1f4f7";
   $("fDirEnt").style.background = pm ? "#fff" : "#f1f4f7";
   if(!am){ $("fDirRec").value = ""; $("fCoordRec").value = ""; }

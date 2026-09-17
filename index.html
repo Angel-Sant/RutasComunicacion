@@ -282,11 +282,15 @@ function construirLista(rutaNum, turno){
       otraRuta: (a.am && a.pm && (a.rutaAM||a.ruta) !== (a.rutaPM||a.ruta))
                 ? (turno === "manana" ? (a.rutaPM||a.ruta) : (a.rutaAM||a.ruta)) : "",
       tel:a.tel, email:a.email, cambio: e ? true : false,
-      orden:(a.orden||99), estado:null, ts:null
+      orden: (turno === "manana") ? (a.ordenAM || a.orden || 99) : (a.ordenPM || a.orden || 99),
+      ordenPropio: (turno === "manana") ? !!a.ordenAM : !!a.ordenPM,
+      estado:null, ts:null
     });
   });
   res.sort(function(x,y){ return x.orden - y.orden; });
-  if(turno === "tarde") res.reverse();
+  /* si nadie tiene orden propio de la tarde, se usa el inverso de la mañana */
+  var conOrdenPropio = res.filter(function(n){ return n.ordenPropio; }).length;
+  if(turno === "tarde" && conOrdenPropio === 0) res.reverse();
   return res;
 }
 /* ---------- login ---------- */
