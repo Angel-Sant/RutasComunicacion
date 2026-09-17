@@ -140,12 +140,15 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
   <div class="card">
     <div class="fila" style="align-items:flex-end">
       <div><h2 style="margin:0">Alumnos registrados</h2><p class="ayuda" style="margin:2px 0 0" id="conteo"></p></div>
-      <div style="max-width:220px"><label>Ver ruta</label><select id="filtroRuta"><option value="">Todas</option></select></div>
+      <div style="max-width:200px"><label>Ver ruta</label><select id="filtroRuta"><option value="">Todas (agrupadas)</option></select></div>
+      <div style="max-width:170px"><label>Turno</label><select id="filtroTurno">
+        <option value="">Ambos</option><option value="am">Solo mañana</option><option value="pm">Solo tarde</option>
+      </select></div>
       <div style="max-width:260px"><label>Buscar</label><input id="buscar" placeholder="Nombre o dirección"></div>
     </div>
     <div style="overflow-x:auto">
       <table id="tabla">
-        <thead><tr><th>Orden<br><span style="font-weight:400">AM / PM</span></th><th>Nombre</th><th>Ruta</th><th>Dirección</th><th>Días</th><th>Turnos</th><th>Contacto / pendientes</th><th></th></tr></thead>
+        <thead><tr id="theadFila"></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
@@ -307,6 +310,18 @@ function cargar(){
     }
   }catch(e){ console.error(e); }
 }
+function sanear(){
+  var tocado = 0;
+  var vacio = /^\s*(no\s*aplica|n\/?a|ninguna?|-+|\.+)\s*$/i;
+  D.alumnos.forEach(function(a){
+    if(!a.am && a.dirRec && vacio.test(a.dirRec)){ a.dirRec = ""; tocado++; }
+    if(!a.pm && a.dirEnt && vacio.test(a.dirEnt)){ a.dirEnt = ""; tocado++; }
+    if(a.dirRec && vacio.test(a.dirRec)){ a.dirRec = ""; tocado++; }
+    if(a.dirEnt && vacio.test(a.dirEnt)){ a.dirEnt = ""; tocado++; }
+  });
+  return tocado;
+}
+
 function guardar(){
   try{
     localStorage.setItem("tb_datos", JSON.stringify(D));
@@ -417,7 +432,11 @@ $("btnGuardarAl").addEventListener("click", function(){
   } else {
     D.alumnos.push(a);
   }
-  guardar(); limpiarForm(); pintarTabla(); llenarSelectAlumnos(); pintarMapa();
+  guardar();
+  var rutaVista = a.rutaAM || a.rutaPM || "";
+  limpiarForm();
+  if(rutaVista){ $("filtroRuta").value = rutaVista; }
+  pintarTabla(); llenarSelectAlumnos(); pintarMapa();
 });
 
 function editar(id){
@@ -449,79 +468,144 @@ function borrar(id, nombre){
   guardar(); pintarTabla(); llenarSelectAlumnos();
 }
 
-function pintarTabla(){
-  var f = $("filtroRuta").value;
-  var q = $("buscar").value.trim().toLowerCase();
-  var lista = D.alumnos.filter(function(a){
-    if(f){
-      var ra = a.rutaAM || (a.am ? a.ruta : ""), rp = a.rutaPM || (a.pm ? a.ruta : "");
-      if(ra !== f && rp !== f) return false;
-    }
-    if(q && (a.nombre + " " + a.dirRec).toLowerCase().indexOf(q) === -1) return false;
-    return true;
-  }).sort(function(a,b){
-    if(a.ruta !== b.ruta) return a.ruta.localeCompare(b.ruta);
-    return (a.ordenAM || a.orden || 99) - (b.ordenAM || b.orden || 99);
-  });
+function rutaTurno(a, t){
+  if(t === "am") return a.am ? (a.rutaAM || a.ruta || "") : "";
+  return a.pm ? (a.rutaPM || a.ruta || "") : "";
+}
+function ordenTurno(a, t){
+  return (t === "am") ? (a.ordenAM || a.orden || 99) : (a.ordenPM || a.orden || 99);
+}
+function dirTurno(a, t){
+  return (t === "am") ? (a.dirRec || "") : (a.dirEnt || a.dirRec || "");
+}
 
-  var tb = $("tbody"); tb.innerHTML = "";
-  lista.forEach(function(a){
-    var tr = document.createElement("tr");
-    function td(txt){ var c = document.createElement("td"); c.textContent = txt; tr.appendChild(c); return c; }
-    var oAM = a.ordenAM || a.orden || 99, oPM = a.ordenPM || a.orden || 99;
-    var txtO = (a.am ? (oAM === 99 ? "—" : oAM) : "") + (a.am && a.pm ? " / " : "") + (a.pm ? (oPM === 99 ? "—" : oPM) : "");
-    td(txtO);
-    td(a.nombre);
-    var rAM = a.rutaAM || (a.am ? a.ruta : ""), rPM = a.rutaPM || (a.pm ? a.ruta : "");
+function filaAlumno(a, contexto){
+  /* contexto: "" = vista plana, "am"/"pm" = dentro de un grupo de ruta */
+  var tr = document.createElement("tr");
+  function td(txt){ var c = document.createElement("td"); c.textContent = txt; tr.appendChild(c); return c; }
+
+  var oAM = a.ordenAM || a.orden || 99, oPM = a.ordenPM || a.orden || 99;
+  if(contexto){
+    var o = (contexto === "am") ? oAM : oPM;
+    td(o === 99 ? "—" : o);
+  } else {
+    td((a.am ? (oAM === 99 ? "—" : oAM) : "") + (a.am && a.pm ? " / " : "") + (a.pm ? (oPM === 99 ? "—" : oPM) : ""));
+  }
+
+  td(a.nombre);
+
+  var rAM = rutaTurno(a,"am"), rPM = rutaTurno(a,"pm");
+  if(contexto){
+    var otra = (contexto === "am") ? rPM : rAM;
+    var cT = td(contexto === "am" ? "Mañana" : "Tarde");
+    if(otra && otra !== (contexto === "am" ? rAM : rPM)){
+      var w = document.createElement("div");
+      w.style.cssText = "color:#b5730c;font-size:12px;font-weight:600";
+      w.textContent = (contexto === "am" ? "regresa en R" : "viene de R") + otra;
+      cT.appendChild(w);
+    }
+  } else {
     var celdaR;
     if(rAM && rPM && rAM === rPM) celdaR = "R" + rAM;
     else celdaR = (rAM ? "AM: R" + rAM : "") + (rAM && rPM ? " · " : "") + (rPM ? "PM: R" + rPM : "");
     var cR = td(celdaR);
     if(rAM && rPM && rAM !== rPM){ cR.style.color = "#b5730c"; cR.style.fontWeight = "700"; }
-    var dirMostrar = a.dirRec || a.dirEnt || "";
-    td(dirMostrar + (a.ref ? " (" + a.ref + ")" : "") + (!a.dirRec && a.dirEnt ? " [entrega]" : ""));
-    td(a.dias.length === 5 ? "L-V" : a.dias.join(" "));
-    td((a.am?"AM ":"") + (a.pm?"PM":""));
-    var c = td(a.tutor + " · " + a.tel);
-    var faltas = [];
-    if(a.am && !a.dirRec) faltas.push("sin dir. recogida");
-    if(a.pm && !a.dirRec && !a.dirEnt) faltas.push("sin dir. entrega");
-    var gpsBase = a.coordRec || (a.lat && a.lng ? a.lat + ", " + a.lng : "");
-    if(a.am && !gpsBase) faltas.push("sin GPS mañana");
-    if(a.pm && !a.coordEnt && !gpsBase) faltas.push("sin GPS tarde");
-    if(a.am){
-      var choqueAM = D.alumnos.filter(function(x){
-        return x.id !== a.id && x.am && (x.rutaAM||x.ruta) === (a.rutaAM||a.ruta) &&
-               (x.ordenAM||x.orden||99) === (a.ordenAM||a.orden||99) && (a.ordenAM||a.orden||99) !== 99;
-      }).length;
-      if(choqueAM) faltas.push("orden AM repetido");
-    }
-    if(a.pm){
-      var choquePM = D.alumnos.filter(function(x){
-        return x.id !== a.id && x.pm && (x.rutaPM||x.ruta) === (a.rutaPM||a.ruta) &&
-               (x.ordenPM||x.orden||99) === (a.ordenPM||a.orden||99) && (a.ordenPM||a.orden||99) !== 99;
-      }).length;
-      if(choquePM) faltas.push("orden PM repetido");
-    }
-    if(faltas.length){
-      var w = document.createElement("div");
-      w.style.cssText = "color:#b5730c;font-size:12px;font-weight:600";
-      w.textContent = faltas.join(" · ");
-      c.appendChild(w);
-    }
-    var acc = document.createElement("td");
-    var be = document.createElement("button"); be.className = "mini"; be.textContent = "Editar";
-    be.addEventListener("click", function(){ editar(a.id); });
-    var bb = document.createElement("button"); bb.className = "mini rojo"; bb.textContent = "Borrar";
-    bb.addEventListener("click", function(){ borrar(a.id, a.nombre); });
-    acc.appendChild(be); acc.appendChild(bb); tr.appendChild(acc);
-    tb.appendChild(tr);
+  }
+
+  var dm = contexto ? dirTurno(a, contexto) : (a.dirRec || a.dirEnt || "");
+  td(dm + (a.ref ? " (" + a.ref + ")" : "") + (!contexto && !a.dirRec && a.dirEnt ? " [entrega]" : ""));
+
+  td(a.dias.length === 5 ? "L-V" : a.dias.join(" "));
+  if(!contexto) td((a.am?"AM ":"") + (a.pm?"PM":""));
+
+  var c = td(a.tutor + " · " + a.tel);
+  var faltas = [];
+  if(a.am && !a.dirRec) faltas.push("sin dir. recogida");
+  if(a.pm && !a.dirRec && !a.dirEnt) faltas.push("sin dir. entrega");
+  var gpsBase = a.coordRec || (a.lat && a.lng ? a.lat + ", " + a.lng : "");
+  if(a.am && !gpsBase) faltas.push("sin GPS mañana");
+  if(a.pm && !a.coordEnt && !gpsBase) faltas.push("sin GPS tarde");
+  if(a.am){
+    var chA = D.alumnos.filter(function(x){
+      return x.id !== a.id && x.am && rutaTurno(x,"am") === rAM && ordenTurno(x,"am") === oAM && oAM !== 99;
+    }).length;
+    if(chA) faltas.push("orden AM repetido");
+  }
+  if(a.pm){
+    var chP = D.alumnos.filter(function(x){
+      return x.id !== a.id && x.pm && rutaTurno(x,"pm") === rPM && ordenTurno(x,"pm") === oPM && oPM !== 99;
+    }).length;
+    if(chP) faltas.push("orden PM repetido");
+  }
+  if(faltas.length){
+    var wf = document.createElement("div");
+    wf.style.cssText = "color:#b5730c;font-size:12px;font-weight:600";
+    wf.textContent = faltas.join(" · ");
+    c.appendChild(wf);
+  }
+
+  var acc = document.createElement("td");
+  var be = document.createElement("button"); be.className = "mini"; be.textContent = "Editar";
+  be.addEventListener("click", function(){ editar(a.id); });
+  var bb = document.createElement("button"); bb.className = "mini rojo"; bb.textContent = "Borrar";
+  bb.addEventListener("click", function(){ borrar(a.id, a.nombre); });
+  acc.appendChild(be); acc.appendChild(bb); tr.appendChild(acc);
+  return tr;
+}
+
+function encabezadoTabla(agrupada){
+  var th = document.getElementById("theadFila");
+  th.innerHTML = agrupada
+    ? '<th>Orden</th><th>Nombre</th><th>Turno</th><th>Dirección</th><th>Días</th><th>Contacto / pendientes</th><th></th>'
+    : '<th>Orden<br><span style="font-weight:400">AM / PM</span></th><th>Nombre</th><th>Ruta</th><th>Dirección</th><th>Días</th><th>Turnos</th><th>Contacto / pendientes</th><th></th>';
+}
+
+function pintarTabla(){
+  var f = $("filtroRuta").value;
+  var ft = $("filtroTurno").value;
+  var q = $("buscar").value.trim().toLowerCase();
+  var tb = $("tbody"); tb.innerHTML = "";
+
+  function coincide(a){
+    return !q || (a.nombre + " " + (a.dirRec||"") + " " + (a.dirEnt||"")).toLowerCase().indexOf(q) !== -1;
+  }
+
+  var agrupada = !f;
+  encabezadoTabla(agrupada);
+  var turnos = ft ? [ft] : ["am","pm"];
+  var mostrados = 0;
+
+  Object.keys(D.rutas).forEach(function(k){
+    if(f && k !== f) return;
+    turnos.forEach(function(t){
+      var lista = D.alumnos.filter(function(a){
+        return rutaTurno(a,t) === k && coincide(a);
+      }).sort(function(x,y){ return ordenTurno(x,t) - ordenTurno(y,t); });
+      if(!lista.length) return;
+      var cupo = D.rutas[k].cupo;
+      var trh = document.createElement("tr");
+      var tdh = document.createElement("td");
+      tdh.colSpan = agrupada ? 7 : 8;
+      tdh.style.cssText = "background:#eef2f7;font-weight:700;font-size:14px;padding:9px 8px;color:#1f5fa9";
+      tdh.textContent = "Ruta " + k + " · " + (t === "am" ? "Mañana" : "Tarde") +
+        " — " + lista.length + "/" + cupo + (lista.length > cupo ? " ¡EXCEDIDA!" : "");
+      trh.appendChild(tdh); tb.appendChild(trh);
+      lista.forEach(function(a){ tb.appendChild(filaAlumno(a, t)); mostrados++; });
+    });
   });
+
+  if(!mostrados){
+    var tr = document.createElement("tr"), td0 = document.createElement("td");
+    td0.colSpan = 8; td0.style.cssText = "padding:16px;color:#5d6875";
+    td0.textContent = q ? "Ningún alumno coincide con la búsqueda." : "No hay alumnos capturados todavía.";
+    tr.appendChild(td0); tb.appendChild(tr);
+  }
 
   var am = {}, pm = {};
   D.alumnos.forEach(function(a){
-    if(a.am){ var r = a.rutaAM || a.ruta; am[r] = (am[r]||0) + 1; }
-    if(a.pm){ var q = a.rutaPM || a.ruta; pm[q] = (pm[q]||0) + 1; }
+    var ra = rutaTurno(a,"am"), rp = rutaTurno(a,"pm");
+    if(ra) am[ra] = (am[ra]||0) + 1;
+    if(rp) pm[rp] = (pm[rp]||0) + 1;
   });
   var partes = Object.keys(D.rutas).map(function(k){
     var cupo = D.rutas[k].cupo, na = am[k]||0, np = pm[k]||0;
@@ -530,11 +614,12 @@ function pintarTabla(){
     return txt;
   });
   var dobles = D.alumnos.filter(function(a){
-    return a.am && a.pm && (a.rutaAM||a.ruta) !== (a.rutaPM||a.ruta);
+    return a.am && a.pm && rutaTurno(a,"am") !== rutaTurno(a,"pm");
   }).length;
   $("conteo").textContent = D.alumnos.length + " alumnos" +
     (dobles ? " (" + dobles + " con dos rutas distintas)" : "") + " · " + partes.join(" · ");
 }
+$("filtroTurno").addEventListener("change", pintarTabla);
 $("filtroRuta").addEventListener("change", pintarTabla);
 $("buscar").addEventListener("input", pintarTabla);
 
@@ -913,6 +998,8 @@ function pintarTodo(){
   pintarTabla(); llenarSelectAlumnos(); pintarExcep(); pintarMapa(); refrescarEtiquetas();
 }
 cargar();
+var limpiados = sanear();
+if(limpiados) guardar();
 $("xFecha").value = hoyISO();
 pintarTodo();
 </script>
