@@ -266,8 +266,10 @@ function construirLista(rutaNum, turno){
     if(e && e.tipo === "no_asiste") return;
     if(e && e.tipo === "solo_am" && turno === "tarde") return;
     if(e && e.tipo === "solo_pm" && turno === "manana") return;
-    var ruta = (e && e.tipo === "cambia_ruta") ? e.ruta : a.ruta;
-    if(String(ruta) !== String(rutaNum)) return;
+    /* la ruta depende del turno: un alumno puede usar dos rutas distintas el mismo día */
+    var ruta = (turno === "manana") ? (a.rutaAM || a.ruta) : (a.rutaPM || a.ruta);
+    if(e && e.tipo === "cambia_ruta") ruta = e.ruta;
+    if(!ruta || String(ruta) !== String(rutaNum)) return;
     if(a.dias && a.dias.length && a.dias.indexOf(dia) === -1) return;
     if(turno === "manana" && a.am === false) return;
     if(turno === "tarde" && a.pm === false) return;
@@ -277,6 +279,8 @@ function construirLista(rutaNum, turno){
     if(e && e.tipo === "cambia_parada"){ dir = e.dir; coord = e.coord || ""; }
     res.push({
       id:a.id, nombre:a.nombre, dir:dir, coord:coord, ref:a.ref, tutor:a.tutor,
+      otraRuta: (a.am && a.pm && (a.rutaAM||a.ruta) !== (a.rutaPM||a.ruta))
+                ? (turno === "manana" ? (a.rutaPM||a.ruta) : (a.rutaAM||a.ruta)) : "",
       tel:a.tel, email:a.email, cambio: e ? true : false,
       orden:(a.orden||99), estado:null, ts:null
     });
@@ -352,7 +356,8 @@ function mostrarNino(){
   var esManana = S.turno === "manana";
   $("nnCuenta").textContent = "Parada " + (S.idx+1) + " de " + S.lista.length + " · " + hora(Date.now());
   $("nnChip").innerHTML = '<span class="chip">' + (esManana ? "Recoger" : "Entregar") + "</span>" +
-    (n.cambio ? ' <span class="chip alerta">CAMBIO HOY</span>' : "");
+    (n.cambio ? ' <span class="chip alerta">CAMBIO HOY</span>' : "") +
+    (n.otraRuta ? ' <span class="chip alerta">' + (esManana ? "Regresa en R" : "Viene de R") + n.otraRuta + '</span>' : "");
   $("nnNombre").textContent = n.nombre;
   $("nnDir").textContent = n.dir;
   $("nnRef").textContent = n.ref ? "Referencia: " + n.ref : "";

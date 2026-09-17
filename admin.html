@@ -94,7 +94,8 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
     <p class="ayuda">Los campos marcados son los mínimos para que la app funcione. El correo es el que recibirá los avisos.</p>
     <div class="fila">
       <div><label>Nombre completo *</label><input id="fNombre" placeholder="Sofía Ramírez"></div>
-      <div><label>Ruta *</label><select id="fRuta"></select></div>
+      <div><label>Ruta de la mañana</label><select id="fRutaAM"></select></div>
+      <div><label>Ruta de la tarde</label><select id="fRutaPM"></select></div>
       <div><label>Orden de parada</label><input id="fOrden" type="number" min="1" placeholder="3"></div>
     </div>
     <div class="fila">
@@ -124,6 +125,7 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
     </div>
     <label>Días que usa el transporte</label>
     <div class="dias" id="fDias"></div>
+    <p class="chico">Si usa la misma ruta en los dos turnos, elige la misma en ambos. Si solo usa un turno, desmárcalo abajo y ese selector se ignora.</p>
     <label>Turnos</label>
     <div class="dias">
       <label><input type="checkbox" id="fAM" checked> Mañana (recogida)</label>
@@ -336,7 +338,7 @@ function pintarDias(){
   });
 }
 function llenarSelectRutas(){
-  ["fRuta","filtroRuta","xRuta","mpRuta"].forEach(function(id){
+  ["fRutaAM","fRutaPM","filtroRuta","xRuta","mpRuta"].forEach(function(id){
     var s = $(id); if(!s) return;
     var prev = s.value;
     s.innerHTML = (id === "filtroRuta" || id === "mpRuta") ? '<option value="">Todas</option>' : "";
@@ -368,7 +370,9 @@ $("btnGuardarAl").addEventListener("click", function(){
   var a = {
     id: editandoId || nuevoId(),
     nombre: $("fNombre").value.trim(),
-    ruta: $("fRuta").value,
+    rutaAM: $("fAM").checked ? $("fRutaAM").value : "",
+    rutaPM: $("fPM").checked ? $("fRutaPM").value : "",
+    ruta: $("fAM").checked ? $("fRutaAM").value : $("fRutaPM").value,
     orden: parseInt($("fOrden").value,10) || 99,
     seccion: $("fSecc").value,
     grado: $("fGrado").value.trim().toUpperCase(),
@@ -387,6 +391,8 @@ $("btnGuardarAl").addEventListener("click", function(){
   var errores = [];
   if(!a.nombre) errores.push("Falta el nombre.");
   if(!a.seccion) errores.push("Falta la sección.");
+  if(a.am && !a.rutaAM) errores.push("Falta la ruta de la mañana.");
+  if(a.pm && !a.rutaPM) errores.push("Falta la ruta de la tarde.");
   if(a.am && !a.dirRec) errores.push("Falta la dirección de recogida (usa el turno de la mañana).");
   if(a.pm && !a.dirRec && !a.dirEnt) errores.push("Falta la dirección de entrega (solo usa el turno de la tarde).");
   function coordMala(c){ return c && !/^\s*-?\d{1,3}(\.\d+)?\s*,\s*-?\d{1,3}(\.\d+)?\s*$/.test(c); }
@@ -417,7 +423,9 @@ function editar(id){
   if(!a) return;
   editandoId = id;
   $("fmTitulo").textContent = "Editando: " + a.nombre;
-  $("fNombre").value = a.nombre; $("fRuta").value = a.ruta; $("fOrden").value = a.orden;
+  $("fNombre").value = a.nombre; $("fOrden").value = a.orden;
+  $("fRutaAM").value = a.rutaAM || a.ruta || "1";
+  $("fRutaPM").value = a.rutaPM || a.ruta || "1";
   $("fDirRec").value = a.dirRec; $("fRef").value = a.ref || ""; $("fDirEnt").value = a.dirEnt || "";
   $("fTutor").value = a.tutor; $("fTel").value = a.tel; $("fEmail").value = a.email;
   $("fAM").checked = !!a.am; $("fPM").checked = !!a.pm;
@@ -440,7 +448,10 @@ function pintarTabla(){
   var f = $("filtroRuta").value;
   var q = $("buscar").value.trim().toLowerCase();
   var lista = D.alumnos.filter(function(a){
-    if(f && a.ruta !== f) return false;
+    if(f){
+      var ra = a.rutaAM || (a.am ? a.ruta : ""), rp = a.rutaPM || (a.pm ? a.ruta : "");
+      if(ra !== f && rp !== f) return false;
+    }
     if(q && (a.nombre + " " + a.dirRec).toLowerCase().indexOf(q) === -1) return false;
     return true;
   }).sort(function(a,b){
@@ -454,7 +465,12 @@ function pintarTabla(){
     function td(txt){ var c = document.createElement("td"); c.textContent = txt; tr.appendChild(c); return c; }
     td(a.orden);
     td(a.nombre);
-    td("Ruta " + a.ruta);
+    var rAM = a.rutaAM || (a.am ? a.ruta : ""), rPM = a.rutaPM || (a.pm ? a.ruta : "");
+    var celdaR;
+    if(rAM && rPM && rAM === rPM) celdaR = "R" + rAM;
+    else celdaR = (rAM ? "AM: R" + rAM : "") + (rAM && rPM ? " · " : "") + (rPM ? "PM: R" + rPM : "");
+    var cR = td(celdaR);
+    if(rAM && rPM && rAM !== rPM){ cR.style.color = "#b5730c"; cR.style.fontWeight = "700"; }
     var dirMostrar = a.dirRec || a.dirEnt || "";
     td(dirMostrar + (a.ref ? " (" + a.ref + ")" : "") + (!a.dirRec && a.dirEnt ? " [entrega]" : ""));
     td(a.dias.length === 5 ? "L-V" : a.dias.join(" "));
@@ -481,14 +497,22 @@ function pintarTabla(){
     tb.appendChild(tr);
   });
 
-  var porRuta = {};
-  D.alumnos.forEach(function(a){ porRuta[a.ruta] = (porRuta[a.ruta]||0) + 1; });
-  var partes = Object.keys(D.rutas).map(function(k){
-    var n = porRuta[k] || 0;
-    var cupo = D.rutas[k].cupo;
-    return "Ruta " + k + ": " + n + "/" + cupo + (n > cupo ? " ¡EXCEDIDA!" : "");
+  var am = {}, pm = {};
+  D.alumnos.forEach(function(a){
+    if(a.am){ var r = a.rutaAM || a.ruta; am[r] = (am[r]||0) + 1; }
+    if(a.pm){ var q = a.rutaPM || a.ruta; pm[q] = (pm[q]||0) + 1; }
   });
-  $("conteo").textContent = D.alumnos.length + " alumnos · " + partes.join(" · ");
+  var partes = Object.keys(D.rutas).map(function(k){
+    var cupo = D.rutas[k].cupo, na = am[k]||0, np = pm[k]||0;
+    var txt = "R" + k + ": " + na + "/" + cupo + " AM · " + np + "/" + cupo + " PM";
+    if(na > cupo || np > cupo) txt += " ¡EXCEDIDA!";
+    return txt;
+  });
+  var dobles = D.alumnos.filter(function(a){
+    return a.am && a.pm && (a.rutaAM||a.ruta) !== (a.rutaPM||a.ruta);
+  }).length;
+  $("conteo").textContent = D.alumnos.length + " alumnos" +
+    (dobles ? " (" + dobles + " con dos rutas distintas)" : "") + " · " + partes.join(" · ");
 }
 $("filtroRuta").addEventListener("change", pintarTabla);
 $("buscar").addEventListener("input", pintarTabla);
@@ -596,7 +620,7 @@ function pintarExcep(){
 }
 
 /* ======================= CSV ======================= */
-var COLS = ["nombre","seccion","grado","ruta","orden","direccion_recogida","referencia","direccion_entrega","tutor","whatsapp","correo","coordenadas_recogida","coordenadas_entrega","dias","turnos"];
+var COLS = ["nombre","seccion","grado","ruta_am","ruta_pm","orden","direccion_recogida","referencia","direccion_entrega","tutor","whatsapp","correo","coordenadas_recogida","coordenadas_entrega","dias","turnos"];
 
 function descargar(nombre, contenido, tipo){
   var b = new Blob([contenido], {type: tipo});
@@ -608,8 +632,8 @@ function descargar(nombre, contenido, tipo){
 
 $("btnPlantilla").addEventListener("click", function(){
   var filas = [COLS.join(",")];
-  filas.push('Sofía Ramírez,PRIM,1RO,1,1,"Av. Toluca 45, Olivar de los Padres",Portón blanco,,Laura (mamá),5512345678,laura@correo.com,"19.3456, -99.2789",,LMXJV,AMPM');
-  filas.push('Diego Herrera,BACH,4TO,1,2,"Calle Pino 12",Frente a la tienda,,Marco (papá),5587654321,marco@correo.com,,,LMJ,AM');
+  filas.push('Sofía Ramírez,PRIM,1RO,1,1,1,"Av. Toluca 45, Olivar de los Padres",Portón blanco,,Laura (mamá),5512345678,laura@correo.com,"19.3456, -99.2789",,LMXJV,AMPM');
+  filas.push('Diego Herrera,BACH,4TO,1,3,2,"Calle Pino 12",Frente a la tienda,,Marco (papá),5587654321,marco@correo.com,,,LMJ,AM');
   descargar("plantilla-alumnos.csv", "\uFEFF" + filas.join("\n"), "text/csv;charset=utf-8");
 });
 
@@ -641,7 +665,7 @@ $("fileCsv").addEventListener("change", function(ev){
     var enc = filas[0].map(function(x){ return x.trim().toLowerCase(); });
     var idx = {};
     COLS.forEach(function(c){ idx[c] = enc.indexOf(c); });
-    if(idx.nombre === -1 || idx.ruta === -1){
+    if(idx.nombre === -1 || (idx.ruta_am === -1 && idx.ruta_pm === -1)){
       $("csvMsg").innerHTML = '<div class="aviso mal">No encuentro las columnas <code>nombre</code> y <code>ruta</code>. Usa la plantilla sin cambiar los encabezados.</div>';
       return;
     }
@@ -652,21 +676,25 @@ $("fileCsv").addEventListener("change", function(ev){
       var nombre = v("nombre");
       if(!nombre) continue;
       var tel = v("whatsapp").replace(/\D/g,"");
-      var ruta = v("ruta").replace(/\D/g,"") || "1";
-      if(!D.rutas[ruta]){ malos.push(nombre + ": ruta " + ruta + " no existe"); continue; }
+      var rAM = v("ruta_am").replace(/\D/g,"");
+      var rPM = v("ruta_pm").replace(/\D/g,"");
+      var ruta = rAM || rPM || "1";
+      if((rAM && !D.rutas[rAM]) || (rPM && !D.rutas[rPM])){
+        malos.push(nombre + ": una de las rutas no existe"); continue;
+      }
       if(tel.length !== 10) malos.push(nombre + ": WhatsApp con " + tel.length + " dígitos");
       var dias = (v("dias").toUpperCase().match(/[LMXJV]/g) || DIAS.slice());
       var turnos = v("turnos").toUpperCase();
       D.alumnos.push({
-        id: nuevoId(), nombre: nombre, ruta: ruta,
+        id: nuevoId(), nombre: nombre, ruta: ruta, rutaAM: rAM, rutaPM: rPM,
         seccion: (v("seccion").toUpperCase() || "PRIM"), grado: v("grado").toUpperCase(),
         orden: parseInt(v("orden"),10) || 99,
         dirRec: v("direccion_recogida"), ref: v("referencia"), dirEnt: v("direccion_entrega"),
         tutor: v("tutor"), tel: tel, email: v("correo"),
         coordRec: v("coordenadas_recogida"), coordEnt: v("coordenadas_entrega"),
         dias: dias,
-        am: turnos.indexOf("AM") > -1 || turnos === "",
-        pm: turnos.indexOf("PM") > -1 || turnos === ""
+        am: rAM ? true : (turnos.indexOf("AM") > -1 || turnos === ""),
+        pm: rPM ? true : (turnos.indexOf("PM") > -1 || turnos === "")
       });
       nuevos++;
     }
@@ -766,6 +794,10 @@ function refrescarEtiquetas(){
   $("fDirEnt").disabled = !pm;
   $("fCoordRec").disabled = !am;
   $("fCoordEnt").disabled = !pm;
+  $("fRutaAM").disabled = !am;
+  $("fRutaPM").disabled = !pm;
+  $("fRutaAM").style.background = am ? "#fff" : "#f1f4f7";
+  $("fRutaPM").style.background = pm ? "#fff" : "#f1f4f7";
   $("fDirRec").style.background = am ? "#fff" : "#f1f4f7";
   $("fDirEnt").style.background = pm ? "#fff" : "#f1f4f7";
   if(!am){ $("fDirRec").value = ""; $("fCoordRec").value = ""; }
