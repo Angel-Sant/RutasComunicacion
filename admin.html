@@ -69,12 +69,29 @@ tr:hover td{background:#f8fafc;}
 .chico{font-size:13px;color:var(--suave);}
 code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
+<div id="loginAdmin" class="oculto" style="position:fixed;inset:0;background:var(--fondo);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px">
+  <div class="card" style="max-width:420px;width:100%">
+    <h2>Panel de coordinación</h2>
+    <p class="ayuda">Entra con tu cuenta de coordinación.</p>
+    <label>Correo</label><input id="lgCorreo" type="email" autocomplete="username">
+    <label>Contraseña</label><input id="lgPass" type="password" autocomplete="current-password">
+    <button class="b verde" id="lgEntrar" style="width:100%">ENTRAR</button>
+    <div id="lgError" class="aviso mal oculto"></div>
+  </div>
+</div>
+
 <header>
   <h1>Panel de coordinación — Transporte Bilbao</h1>
-  <div class="est" id="estado">Sin guardar</div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <div class="est" id="estado">Sin guardar</div>
+    <button class="mini oculto" id="btnSalirAdmin" style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.4)">Salir</button>
+  </div>
 </header>
 
 <nav>
@@ -111,13 +128,22 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
     </div>
     <div class="fila">
       <div><label id="lbCoordRec">Coordenadas de recogida</label><input id="fCoordRec" placeholder="19.3456, -99.2789"></div>
+      <div><label>¿Es punto de encuentro? (mañana)</label>
+        <div class="dias" style="margin-top:0"><label><input type="checkbox" id="fPERec"> Sí, varias familias aquí</label></div>
+      </div>
+      <div><label>Nombre del punto (mañana)</label><input id="fPtoRec" placeholder="Costco Santa Fe"></div>
     </div>
     <div class="fila">
       <div><label id="lbDirEnt">Dirección de entrega (tarde)</label><input id="fDirEnt" placeholder="Dejar vacío si se entrega en la misma dirección"></div>
     </div>
     <div class="fila">
       <div><label>Coordenadas de entrega</label><input id="fCoordEnt" placeholder="Dejar vacío si es la misma"></div>
+      <div><label>¿Es punto de encuentro? (tarde)</label>
+        <div class="dias" style="margin-top:0"><label><input type="checkbox" id="fPEEnt"> Sí, varias familias aquí</label></div>
+      </div>
+      <div><label>Nombre del punto (tarde)</label><input id="fPtoEnt" placeholder="La Ranita"></div>
     </div>
+    <p class="chico">Un punto de encuentro no recibe el aviso de "ya viene el camión", porque las familias ya están esperando ahí. Sí recibe el aviso de retraso.</p>
     <p class="chico">Para sacar las coordenadas: en Google Maps, mantén presionado el punto exacto y copia los números que aparecen. Pégalos tal cual, con la coma.</p>
     <div class="fila">
       <div><label>Tutor *</label><input id="fTutor" placeholder="Laura (mamá)"></div>
@@ -204,33 +230,74 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
 <!-- ================= EXCEPCIONES ================= -->
 <section id="tExcep" class="oculto">
   <div class="card">
-    <h2>Cambios de un día</h2>
-    <p class="ayuda">Aquí registras lo temporal, sin tocar el registro permanente del alumno. Lo que captures aparece solo ese día en la app de la auxiliar.</p>
-    <div class="fila">
-      <div><label>Fecha</label><input type="date" id="xFecha"></div>
-      <div><label>Alumno</label><select id="xAlumno"></select></div>
-      <div><label>Qué pasa</label>
-        <select id="xTipo">
-          <option value="no_asiste">No usa el transporte ese día</option>
-          <option value="cambia_ruta">Va en otra ruta</option>
-          <option value="cambia_parada">Sube o baja en otra dirección</option>
-          <option value="solo_am">Solo mañana (no regresa)</option>
-          <option value="solo_pm">Solo tarde (no lo recogen)</option>
-        </select>
+    <h2>Registrar un cambio</h2>
+    <p class="ayuda">Aquí va lo temporal, sin tocar el registro permanente del alumno. Solo aplica en la fecha que elijas.</p>
+
+    <label>1 · ¿Para qué día?</label>
+    <div class="fila" style="align-items:flex-end">
+      <div style="max-width:200px"><input type="date" id="xFecha"></div>
+      <div style="max-width:300px;margin-bottom:2px">
+        <button class="mini" id="xHoy">Hoy</button>
+        <button class="mini" id="xManana">Mañana</button>
+        <button class="mini" id="xSemana">Toda esta semana</button>
       </div>
     </div>
-    <div id="xExtra" class="oculto">
-      <div class="fila">
-        <div id="xRutaBox" class="oculto"><label>Ruta que le toca ese día</label><select id="xRuta"></select></div>
-        <div id="xDirBox" class="oculto"><label>Dirección para ese día</label><input id="xDir" placeholder="Casa de la abuela, Calle Morelos 22"></div>
+
+    <label style="margin-top:16px">2 · ¿Qué alumno?</label>
+    <input id="xBuscar" placeholder="Escribe parte del nombre: garcia, noguez, sofia…" autocomplete="off">
+    <div id="xResultados" style="margin-top:8px"></div>
+    <div id="xElegido" class="aviso ok oculto" style="margin-top:10px"></div>
+
+    <div id="xPaso3" class="oculto">
+      <label style="margin-top:16px">3 · ¿Qué pasa?</label>
+      <select id="xTipo">
+        <option value="no_asiste">No usa el transporte ese día</option>
+        <option value="cambia_ruta">Va en otra ruta</option>
+        <option value="cambia_parada">Sube o baja en otra dirección</option>
+        <option value="solo_am">Solo mañana (no regresa)</option>
+        <option value="solo_pm">Solo tarde (no lo recogen)</option>
+      </select>
+
+      <div id="xRutaBox" class="oculto">
+        <div class="fila">
+          <div><label>Ruta que le toca ese día</label><select id="xRuta"></select></div>
+          <div><label>Turno que cambia</label><select id="xTurno">
+            <option value="ambos">Los dos turnos</option>
+            <option value="am">Solo la mañana</option>
+            <option value="pm">Solo la tarde</option>
+          </select></div>
+          <div><label>Orden de parada (opcional)</label><input id="xOrden" type="number" min="1"></div>
+        </div>
       </div>
+
+      <div id="xDirBox" class="oculto">
+        <div class="fila">
+          <div><label>Dirección para ese día</label><input id="xDir" placeholder="Casa de la abuela, Calle Morelos 22"></div>
+          <div><label>Coordenadas (opcional)</label><input id="xCoord" placeholder="19.3456, -99.2789"></div>
+        </div>
+      </div>
+
+      <label style="margin-top:14px">4 · Motivo <span class="chico" style="font-weight:400">(lo ve la auxiliar en su celular)</span></label>
+      <div class="dias" id="xMotivos"></div>
+      <input id="xMotivoLibre" placeholder="O escríbelo con tus palabras" style="margin-top:8px">
+
+      <label style="margin-top:14px">¿Quién avisó? <span class="chico" style="font-weight:400">(opcional)</span></label>
+      <input id="xQuien" placeholder="La mamá por WhatsApp, 6:40 a.m.">
+
+      <button class="b verde" id="btnAddExcep">REGISTRAR CAMBIO</button>
+      <div id="xError" class="aviso mal oculto"></div>
     </div>
-    <button class="b verde" id="btnAddExcep">REGISTRAR CAMBIO</button>
   </div>
+
   <div class="card">
-    <h2>Cambios registrados</h2>
-    <p class="ayuda">Se muestran de hoy en adelante. Los cambios pasados se conservan en el respaldo pero no se listan.</p>
+    <div class="fila" style="align-items:flex-end">
+      <div><h2 style="margin:0">Cambios registrados</h2>
+        <p class="ayuda" style="margin:2px 0 0">De hoy en adelante. Los pasados se guardan pero no se listan.</p></div>
+      <div style="max-width:200px"><label>Ver ruta</label><select id="xFiltroRuta"><option value="">Todas</option></select></div>
+    </div>
     <div id="listaExcep"></div>
+    <button class="b linea" id="btnCopiarCambios">COPIAR LOS CAMBIOS DE HOY</button>
+    <p class="chico">Sirve para pegarlos en el WhatsApp de las auxiliares mientras no esté Firebase, porque su app todavía no los recibe sola.</p>
   </div>
 </section>
 
@@ -246,15 +313,11 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
   </div>
 
   <div class="card">
-    <h2>Publicar a las auxiliares</h2>
-    <p class="ayuda">Para que los celulares de las auxiliares vean lo que capturaste, los datos tienen que subir a Firebase.</p>
-    <label>URL de tu base de datos Firebase</label>
-    <input id="fbUrl" placeholder="https://rutas-bilbao-default-rtdb.firebaseio.com">
-    <p class="chico">La encuentras en la consola de Firebase → Realtime Database. Se guarda solo en esta computadora.</p>
-    <button class="b verde" id="btnPublicar">PUBLICAR AHORA</button>
-    <button class="b gris" id="btnProbar">Probar conexión</button>
-    <div id="fbMsg"></div>
-    <div class="aviso">Si todavía no tienes Firebase listo, usa el respaldo de abajo: descarga <code>datos.json</code> y súbelo al repositorio junto al <code>index.html</code>. La app lo lee igual, solo que se actualiza cuando tú subes el archivo.</div>
+    <h2>Publicación a las auxiliares</h2>
+    <p class="ayuda">Cada cambio que guardas se sube solo a la nube, y les llega a las auxiliares en segundos, aunque ya vayan en ruta.</p>
+    <div id="nubeEstado" class="aviso"></div>
+    <button class="b verde" id="btnPublicar">SUBIR AHORA</button>
+    <p class="chico">Normalmente no hace falta: es por si quieres forzar la subida después de un corte de internet.</p>
   </div>
 
   <div class="card">
@@ -322,13 +385,133 @@ function sanear(){
   return tocado;
 }
 
-function guardar(){
-  try{
-    localStorage.setItem("tb_datos", JSON.stringify(D));
-    var h = new Date();
-    $("estado").textContent = "Guardado " + String(h.getHours()).padStart(2,"0")+":"+String(h.getMinutes()).padStart(2,"0");
-  }catch(e){ $("estado").textContent = "No se pudo guardar"; }
+/* ===================== FIREBASE =====================
+   Pega aquí la configuración web del proyecto (consola de Firebase →
+   Configuración del proyecto → Tus apps → Configuración del SDK). */
+var FIREBASE_CONFIG = {
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: ""
+};
+var NUBE = null, docDatos = null, tSubida = null, usuarioAdmin = null;
+
+function hhmm(){ var h=new Date(); return String(h.getHours()).padStart(2,"0")+":"+String(h.getMinutes()).padStart(2,"0"); }
+function estadoNube(txt, clase){
+  $("estado").textContent = txt;
+  var n = $("nubeEstado");
+  if(n){ n.textContent = txt; n.className = "aviso" + (clase ? " " + clase : ""); }
 }
+
+function guardar(){
+  try{ localStorage.setItem("tb_datos", JSON.stringify(D)); }catch(e){}
+  if(!NUBE){ estadoNube("Guardado en esta computadora " + hhmm() + " · sin nube"); return; }
+  estadoNube("Guardando en la nube…");
+  clearTimeout(tSubida);
+  tSubida = setTimeout(subirNube, 1200);
+}
+
+/* los cambios de días pasados no se suben: la nube guarda los últimos 30 días */
+function paqueteNube(){
+  var p = JSON.parse(JSON.stringify(paquete()));
+  var lim = new Date(); lim.setDate(lim.getDate() - 30);
+  var corte = lim.toISOString().slice(0,10);
+  Object.keys(p.excepciones || {}).forEach(function(f){ if(f < corte) delete p.excepciones[f]; });
+  p.actualizadoPor = usuarioAdmin ? usuarioAdmin.email : "";
+  return p;
+}
+function subirNube(){
+  if(!docDatos) return;
+  var pendiente = true;
+  setTimeout(function(){
+    if(pendiente) estadoNube("Sin conexión: se subirá solo al volver el internet", "mal");
+  }, 6000);
+  docDatos.set(paqueteNube())
+    .then(function(){ pendiente = false; estadoNube("Guardado en la nube " + hhmm(), "ok"); })
+    .catch(function(e){
+      pendiente = false;
+      estadoNube("No se pudo subir: " + (e.code === "permission-denied"
+        ? "esta cuenta no tiene permiso de coordinación"
+        : (e.message || e)), "mal");
+    });
+}
+
+function iniciarNube(){
+  if(!FIREBASE_CONFIG.apiKey || typeof firebase === "undefined"){
+    arrancarPanel();
+    estadoNube("Modo local: Firebase sin configurar. Lo que captures no llega a las auxiliares.", "mal");
+    return;
+  }
+  firebase.initializeApp(FIREBASE_CONFIG);
+  var db = firebase.firestore();
+  db.enablePersistence({ synchronizeTabs: true }).catch(function(){});
+  docDatos = db.collection("transporte").doc("datos");
+
+  firebase.auth().onAuthStateChanged(function(u){
+    if(!u){
+      usuarioAdmin = null; NUBE = null;
+      $("loginAdmin").classList.remove("oculto");
+      $("btnSalirAdmin").classList.add("oculto");
+      return;
+    }
+    usuarioAdmin = u;
+    $("loginAdmin").classList.add("oculto");
+    $("btnSalirAdmin").classList.remove("oculto");
+    estadoNube("Conectando…");
+    docDatos.get().then(function(s){
+      var local = null;
+      try{ local = JSON.parse(localStorage.getItem("tb_datos") || "null"); }catch(e){}
+      if(s.exists && s.data().alumnos){
+        /* la nube manda; lo local se conserva como respaldo por si acaso */
+        if(local) try{ localStorage.setItem("tb_datos_respaldo_local", JSON.stringify(local)); }catch(e){}
+        var c = s.data();
+        D.colegio = c.colegio || D.colegio;
+        D.rutas = c.rutas || D.rutas;
+        D.alumnos = c.alumnos || [];
+        D.excepciones = c.excepciones || {};
+        NUBE = true;
+        try{ localStorage.setItem("tb_datos", JSON.stringify(D)); }catch(e){}
+        arrancarPanel();
+        estadoNube("Conectado a la nube · " + D.alumnos.length + " alumnos", "ok");
+      } else {
+        /* primera vez: la nube está vacía, se sube lo que hay en esta computadora */
+        cargar();
+        NUBE = true;
+        arrancarPanel();
+        if(D.alumnos.length){
+          estadoNube("Primera subida: " + D.alumnos.length + " alumnos de esta computadora…");
+          subirNube();
+        } else {
+          estadoNube("Conectado a la nube · todavía sin alumnos", "ok");
+        }
+      }
+    }).catch(function(e){
+      cargar(); arrancarPanel();
+      estadoNube(e.code === "permission-denied"
+        ? "Esta cuenta no tiene permiso de coordinación. Revisa las reglas de Firestore."
+        : "No se pudo leer la nube. Trabajando con la copia de esta computadora.", "mal");
+    });
+  });
+}
+
+$("lgEntrar").addEventListener("click", function(){
+  $("lgError").classList.add("oculto");
+  firebase.auth().signInWithEmailAndPassword($("lgCorreo").value.trim(), $("lgPass").value)
+    .catch(function(e){
+      var m = {"auth/invalid-credential":"Correo o contraseña incorrectos.",
+               "auth/wrong-password":"Contraseña incorrecta.",
+               "auth/user-not-found":"No existe esa cuenta.",
+               "auth/too-many-requests":"Demasiados intentos. Espera unos minutos.",
+               "auth/network-request-failed":"Sin conexión a internet."}[e.code] || e.message;
+      $("lgError").textContent = m; $("lgError").classList.remove("oculto");
+    });
+});
+$("lgPass").addEventListener("keydown", function(e){ if(e.key==="Enter") $("lgEntrar").click(); });
+$("btnSalirAdmin").addEventListener("click", function(){
+  if(confirm("¿Cerrar sesión en esta computadora?")) firebase.auth().signOut().then(function(){ location.reload(); });
+});
 
 /* ======================= NAVEGACIÓN ======================= */
 Array.prototype.forEach.call(document.querySelectorAll("nav button"), function(b){
@@ -354,10 +537,10 @@ function pintarDias(){
   });
 }
 function llenarSelectRutas(){
-  ["fRutaAM","fRutaPM","filtroRuta","xRuta","mpRuta"].forEach(function(id){
+  ["fRutaAM","fRutaPM","filtroRuta","xRuta","mpRuta","xFiltroRuta"].forEach(function(id){
     var s = $(id); if(!s) return;
     var prev = s.value;
-    s.innerHTML = (id === "filtroRuta" || id === "mpRuta") ? '<option value="">Todas</option>' : "";
+    s.innerHTML = (id === "filtroRuta" || id === "mpRuta" || id === "xFiltroRuta") ? '<option value="">Todas</option>' : "";
     Object.keys(D.rutas).forEach(function(k){
       var o = document.createElement("option");
       o.value = k; o.textContent = "Ruta " + k;
@@ -370,11 +553,12 @@ function llenarSelectRutas(){
 function limpiarForm(){
   editandoId = null;
   $("fmTitulo").textContent = "Agregar alumno";
-  ["fNombre","fOrdenAM","fOrdenPM","fDirRec","fRef","fDirEnt","fTutor","fTel","fEmail","fGrado","fCoordRec","fCoordEnt"].forEach(function(id){ $(id).value = ""; });
+  ["fNombre","fOrdenAM","fOrdenPM","fDirRec","fRef","fDirEnt","fTutor","fTel","fEmail","fGrado","fCoordRec","fCoordEnt","fPtoRec","fPtoEnt"].forEach(function(id){ $(id).value = ""; });
   $("fAM").checked = true; $("fPM").checked = true;
   Array.prototype.forEach.call(document.querySelectorAll(".diaCheck"), function(c){ c.checked = true; });
   $("btnCancelar").classList.add("oculto");
   $("fError").classList.add("oculto");
+  $("fPERec").checked = false; $("fPEEnt").checked = false;
   refrescarEtiquetas();
 }
 $("btnCancelar").addEventListener("click", limpiarForm);
@@ -396,6 +580,10 @@ $("btnGuardarAl").addEventListener("click", function(){
     grado: $("fGrado").value.trim().toUpperCase(),
     dirRec: $("fDirRec").value.trim(),
     coordRec: $("fCoordRec").value.trim(),
+    peRec: $("fPERec").checked,
+    ptoRec: $("fPtoRec").value.trim(),
+    peEnt: $("fPEEnt").checked,
+    ptoEnt: $("fPtoEnt").value.trim(),
     coordEnt: $("fCoordEnt").value.trim(),
     ref: $("fRef").value.trim(),
     dirEnt: $("fDirEnt").value.trim(),
@@ -456,6 +644,8 @@ function editar(id){
   $("fSecc").value = a.seccion || "PRIM"; $("fGrado").value = a.grado || "";
   $("fCoordRec").value = a.coordRec || (a.lat && a.lng ? a.lat + ", " + a.lng : "");
   $("fCoordEnt").value = a.coordEnt || "";
+  $("fPERec").checked = !!a.peRec; $("fPtoRec").value = a.ptoRec || "";
+  $("fPEEnt").checked = !!a.peEnt; $("fPtoEnt").value = a.ptoEnt || "";
   refrescarEtiquetas();
   Array.prototype.forEach.call(document.querySelectorAll(".diaCheck"), function(c){ c.checked = a.dias.indexOf(c.value) !== -1; });
   $("btnCancelar").classList.remove("oculto");
@@ -465,7 +655,7 @@ function editar(id){
 function borrar(id, nombre){
   if(!confirm("¿Borrar a " + nombre + "? Esto no se puede deshacer.")) return;
   D.alumnos = D.alumnos.filter(function(a){ return a.id !== id; });
-  guardar(); pintarTabla(); llenarSelectAlumnos();
+  guardar(); pintarTabla();
 }
 
 function rutaTurno(a, t){
@@ -513,7 +703,15 @@ function filaAlumno(a, contexto){
   }
 
   var dm = contexto ? dirTurno(a, contexto) : (a.dirRec || a.dirEnt || "");
-  td(dm + (a.ref ? " (" + a.ref + ")" : "") + (!contexto && !a.dirRec && a.dirEnt ? " [entrega]" : ""));
+  var cD = td(dm + (a.ref ? " (" + a.ref + ")" : "") + (!contexto && !a.dirRec && a.dirEnt ? " [entrega]" : ""));
+  var esPE = contexto ? (contexto === "am" ? a.peRec : a.peEnt) : (a.peRec || a.peEnt);
+  var nomPE = contexto ? (contexto === "am" ? a.ptoRec : a.ptoEnt) : (a.ptoRec || a.ptoEnt);
+  if(esPE){
+    var wp = document.createElement("div");
+    wp.style.cssText = "color:#1d7a4c;font-size:12px;font-weight:600";
+    wp.textContent = "punto de encuentro" + (nomPE ? ": " + nomPE : "");
+    cD.appendChild(wp);
+  }
 
   td(a.dias.length === 5 ? "L-V" : a.dias.join(" "));
   if(!contexto) td((a.am?"AM ":"") + (a.pm?"PM":""));
@@ -529,13 +727,13 @@ function filaAlumno(a, contexto){
     var chA = D.alumnos.filter(function(x){
       return x.id !== a.id && x.am && rutaTurno(x,"am") === rAM && ordenTurno(x,"am") === oAM && oAM !== 99;
     }).length;
-    if(chA) faltas.push("orden AM repetido");
+    if(chA && !a.peRec) faltas.push("orden AM repetido");
   }
   if(a.pm){
     var chP = D.alumnos.filter(function(x){
       return x.id !== a.id && x.pm && rutaTurno(x,"pm") === rPM && ordenTurno(x,"pm") === oPM && oPM !== 99;
     }).length;
-    if(chP) faltas.push("orden PM repetido");
+    if(chP && !a.peEnt) faltas.push("orden PM repetido");
   }
   if(faltas.length){
     var wf = document.createElement("div");
@@ -660,73 +858,237 @@ $("btnColegio").addEventListener("click", function(){
 });
 
 /* ======================= EXCEPCIONES ======================= */
-function llenarSelectAlumnos(){
-  var s = $("xAlumno"); s.innerHTML = "";
-  D.alumnos.slice().sort(function(a,b){ return a.nombre.localeCompare(b.nombre); }).forEach(function(a){
-    var o = document.createElement("option");
-    o.value = a.id; o.textContent = a.nombre + " (Ruta " + a.ruta + ")";
-    s.appendChild(o);
-  });
-}
-$("xTipo").addEventListener("change", function(){
-  var t = $("xTipo").value;
-  $("xRutaBox").classList.toggle("oculto", t !== "cambia_ruta");
-  $("xDirBox").classList.toggle("oculto", t !== "cambia_parada");
-  $("xExtra").classList.toggle("oculto", t !== "cambia_ruta" && t !== "cambia_parada");
-});
-$("btnAddExcep").addEventListener("click", function(){
-  var f = $("xFecha").value;
-  if(!f){ alert("Elige la fecha."); return; }
-  if(!$("xAlumno").value){ alert("No hay alumnos registrados todavía."); return; }
-  var e = { alumno: $("xAlumno").value, tipo: $("xTipo").value };
-  if(e.tipo === "cambia_ruta") e.ruta = $("xRuta").value;
-  if(e.tipo === "cambia_parada"){
-    e.dir = $("xDir").value.trim();
-    if(!e.dir){ alert("Escribe la dirección para ese día."); return; }
-  }
-  if(!D.excepciones[f]) D.excepciones[f] = [];
-  D.excepciones[f] = D.excepciones[f].filter(function(x){ return x.alumno !== e.alumno; });
-  D.excepciones[f].push(e);
-  guardar(); pintarExcep(); $("xDir").value = "";
-});
+var MOTIVOS_EXC = ["Enfermo","Cita médica","Lo llevan los papás","Se queda en casa de un familiar",
+                   "Actividad extraescolar","Viaje","Suspensión de clases","Otro"];
+var xAlumnoId = null;
+
+function llenarSelectAlumnos(){ /* ya no se usa un menú: se busca por nombre */ }
 
 function nombreAlumno(id){
-  var n = "(alumno borrado)";
-  D.alumnos.forEach(function(a){ if(a.id === id) n = a.nombre; });
+  var n="(alumno borrado)";
+  D.alumnos.forEach(function(a){ if(a.id===id) n=a.nombre; });
   return n;
 }
+function alumnoPorId(id){
+  var r=null;
+  D.alumnos.forEach(function(a){ if(a.id===id) r=a; });
+  return r;
+}
+
+/* --- fechas rápidas --- */
+function fechaMas(dias){
+  var d=new Date(); d.setDate(d.getDate()+dias);
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+$("xHoy").addEventListener("click", function(){ $("xFecha").value=hoyISO(); });
+$("xManana").addEventListener("click", function(){ $("xFecha").value=fechaMas(1); });
+
+/* --- buscador --- */
+$("xBuscar").addEventListener("input", function(){
+  var q=$("xBuscar").value.trim().toLowerCase();
+  var cont=$("xResultados"); cont.innerHTML="";
+  if(q.length<2) return;
+  var hits=D.alumnos.filter(function(a){ return a.nombre.toLowerCase().indexOf(q)!==-1; }).slice(0,8);
+  if(!hits.length){ cont.innerHTML='<p class="ayuda">Ningún alumno con ese nombre.</p>'; return; }
+  hits.forEach(function(a){
+    var b=document.createElement("button");
+    b.className="mini";
+    b.style.cssText="display:block;width:100%;text-align:left;margin-bottom:4px;padding:9px 11px";
+    var rAM=a.rutaAM||(a.am?a.ruta:""), rPM=a.rutaPM||(a.pm?a.ruta:"");
+    b.textContent=a.nombre+"  —  "+(rAM?"AM R"+rAM:"")+(rAM&&rPM?" · ":"")+(rPM?"PM R"+rPM:"");
+    b.addEventListener("click", function(){ elegirAlumno(a.id); });
+    cont.appendChild(b);
+  });
+});
+function elegirAlumno(id){
+  xAlumnoId=id;
+  var a=alumnoPorId(id);
+  $("xResultados").innerHTML="";
+  $("xBuscar").value="";
+  var rAM=a.rutaAM||(a.am?a.ruta:""), rPM=a.rutaPM||(a.pm?a.ruta:"");
+  $("xElegido").innerHTML="<strong>"+a.nombre+"</strong> · "+(a.seccion||"")+" "+(a.grado||"")+
+    "<br>Normalmente: "+(rAM?"mañana R"+rAM:"no usa la mañana")+" · "+(rPM?"tarde R"+rPM:"no usa la tarde")+
+    ' <button class="mini" id="xQuitarAl" style="margin-left:8px">Cambiar alumno</button>';
+  $("xElegido").classList.remove("oculto");
+  $("xPaso3").classList.remove("oculto");
+  $("xQuitarAl").addEventListener("click", function(){
+    xAlumnoId=null;
+    $("xElegido").classList.add("oculto");
+    $("xPaso3").classList.add("oculto");
+    $("xBuscar").focus();
+  });
+  refrescarTipo();
+}
+
+/* --- motivos --- */
+function pintarMotivos(){
+  var c=$("xMotivos"); c.innerHTML="";
+  MOTIVOS_EXC.forEach(function(m){
+    var b=document.createElement("button");
+    b.className="mini"; b.textContent=m;
+    b.addEventListener("click", function(){
+      Array.prototype.forEach.call(c.children, function(x){
+        x.style.background="#fff"; x.style.color="var(--tinta)"; x.style.borderColor="var(--linea)";
+      });
+      b.style.background="var(--azul)"; b.style.color="#fff"; b.style.borderColor="var(--azul)";
+      $("xMotivoLibre").dataset.sel=m;
+    });
+    c.appendChild(b);
+  });
+}
+function motivoElegido(){
+  var libre=$("xMotivoLibre").value.trim();
+  var sel=$("xMotivoLibre").dataset.sel||"";
+  if(sel&&libre) return sel+" — "+libre;
+  return libre||sel;
+}
+
+function refrescarTipo(){
+  var t=$("xTipo").value;
+  $("xRutaBox").classList.toggle("oculto", t!=="cambia_ruta");
+  $("xDirBox").classList.toggle("oculto", t!=="cambia_parada");
+}
+$("xTipo").addEventListener("change", refrescarTipo);
+
+$("btnAddExcep").addEventListener("click", function(){
+  var f=$("xFecha").value, err=[];
+  if(!f) err.push("Elige la fecha.");
+  if(!xAlumnoId) err.push("Elige el alumno.");
+  var e={ alumno:xAlumnoId, tipo:$("xTipo").value, motivo:motivoElegido(),
+          aviso:$("xQuien").value.trim(), registrado:new Date().toISOString() };
+  if(e.tipo==="cambia_ruta"){
+    e.ruta=$("xRuta").value; e.turno=$("xTurno").value;
+    var o=parseInt($("xOrden").value,10); if(o) e.orden=o;
+    if(!e.ruta) err.push("Elige la ruta.");
+  }
+  if(e.tipo==="cambia_parada"){
+    e.dir=$("xDir").value.trim();
+    e.coord=$("xCoord").value.trim();
+    if(!e.dir) err.push("Escribe la dirección para ese día.");
+    if(e.coord&&!/^\s*-?\d{1,3}(\.\d+)?\s*,\s*-?\d{1,3}(\.\d+)?\s*$/.test(e.coord))
+      err.push("Las coordenadas van así: 19.3456, -99.2789");
+  }
+  if(!e.motivo) err.push("Falta el motivo: la auxiliar lo necesita para saber qué pasó.");
+  if(err.length){
+    $("xError").innerHTML=err.join("<br>");
+    $("xError").classList.remove("oculto");
+    return;
+  }
+  $("xError").classList.add("oculto");
+
+  var fechas=[f];
+  if($("xSemana").dataset.on==="1"){
+    var d=new Date(f+"T12:00:00"), dow=d.getDay();
+    fechas=[];
+    for(var i=1;i<=5;i++){
+      var x=new Date(d); x.setDate(d.getDate()+(i-dow));
+      fechas.push(x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0"));
+    }
+    $("xSemana").dataset.on="0"; $("xSemana").style.background="#fff"; $("xSemana").style.color="var(--tinta)";
+  }
+  fechas.forEach(function(fx){
+    if(!D.excepciones[fx]) D.excepciones[fx]=[];
+    D.excepciones[fx]=D.excepciones[fx].filter(function(x){ return x.alumno!==e.alumno; });
+    D.excepciones[fx].push(JSON.parse(JSON.stringify(e)));
+  });
+  guardar(); pintarExcep();
+  $("xDir").value=""; $("xCoord").value=""; $("xOrden").value="";
+  $("xMotivoLibre").value=""; delete $("xMotivoLibre").dataset.sel; $("xQuien").value="";
+  pintarMotivos();
+  alert("Cambio registrado para "+fechas.length+" día(s).");
+});
+
+$("xSemana").addEventListener("click", function(){
+  var on=$("xSemana").dataset.on==="1";
+  $("xSemana").dataset.on=on?"0":"1";
+  $("xSemana").style.background=on?"#fff":"var(--azul)";
+  $("xSemana").style.color=on?"var(--tinta)":"#fff";
+});
+
 function textoExcep(e){
-  if(e.tipo === "no_asiste") return "no usa el transporte";
-  if(e.tipo === "cambia_ruta") return "va en la Ruta " + e.ruta;
-  if(e.tipo === "cambia_parada") return "sube/baja en " + e.dir;
-  if(e.tipo === "solo_am") return "solo mañana";
-  if(e.tipo === "solo_pm") return "solo tarde";
+  if(e.tipo==="no_asiste") return "no usa el transporte";
+  if(e.tipo==="cambia_ruta") return "va en la Ruta "+e.ruta+
+    (e.turno&&e.turno!=="ambos"?(e.turno==="am"?" (solo mañana)":" (solo tarde)"):"")+
+    (e.orden?" · parada "+e.orden:"");
+  if(e.tipo==="cambia_parada") return "sube/baja en "+e.dir;
+  if(e.tipo==="solo_am") return "solo mañana, no regresa";
+  if(e.tipo==="solo_pm") return "solo tarde, no lo recogen";
   return e.tipo;
 }
+function rutasDe(a){
+  if(!a) return [];
+  var r=[];
+  var ra=a.rutaAM||(a.am?a.ruta:""), rp=a.rutaPM||(a.pm?a.ruta:"");
+  if(ra) r.push(ra);
+  if(rp&&r.indexOf(rp)===-1) r.push(rp);
+  return r;
+}
 function pintarExcep(){
-  var c = $("listaExcep"); c.innerHTML = "";
-  var fechas = Object.keys(D.excepciones).filter(function(f){ return f >= hoyISO(); }).sort();
-  if(!fechas.length){ c.innerHTML = '<p class="ayuda">No hay cambios registrados para hoy ni para los próximos días.</p>'; return; }
+  var c=$("listaExcep"); c.innerHTML="";
+  var fr=$("xFiltroRuta").value;
+  var fechas=Object.keys(D.excepciones).filter(function(f){ return f>=hoyISO(); }).sort();
+  var algo=false;
   fechas.forEach(function(f){
-    var h = document.createElement("h3"); h.textContent = f; c.appendChild(h);
-    D.excepciones[f].forEach(function(e, i){
-      var d = document.createElement("div");
-      d.style.cssText = "padding:8px 0;border-bottom:1px solid var(--linea);display:flex;justify-content:space-between;align-items:center;gap:10px";
-      var s = document.createElement("span");
-      s.innerHTML = "<strong>" + nombreAlumno(e.alumno) + "</strong> — " + textoExcep(e);
-      var b = document.createElement("button"); b.className = "mini rojo"; b.textContent = "Quitar";
+    var lista=D.excepciones[f].filter(function(e){
+      if(!fr) return true;
+      var rs=rutasDe(alumnoPorId(e.alumno));
+      if(e.tipo==="cambia_ruta"&&e.ruta) rs.push(e.ruta);
+      return rs.indexOf(fr)!==-1;
+    });
+    if(!lista.length) return;
+    algo=true;
+    var h3=document.createElement("h3");
+    h3.textContent=(f===hoyISO()?"HOY · ":"")+f+"  ("+lista.length+")";
+    c.appendChild(h3);
+    lista.forEach(function(e){
+      var a=alumnoPorId(e.alumno);
+      var d=document.createElement("div");
+      d.style.cssText="padding:10px 0;border-bottom:1px solid var(--linea);display:flex;justify-content:space-between;align-items:flex-start;gap:10px";
+      var s=document.createElement("div");
+      s.innerHTML="<strong>"+nombreAlumno(e.alumno)+"</strong>"+
+        (a?' <span class="pill">'+rutasDe(a).map(function(x){return "R"+x;}).join(" / ")+"</span>":"")+
+        "<br>"+textoExcep(e)+
+        (e.motivo?'<br><span class="chico">Motivo: '+e.motivo+"</span>":"")+
+        (e.aviso?'<br><span class="chico">Avisó: '+e.aviso+"</span>":"");
+      var b=document.createElement("button");
+      b.className="mini rojo"; b.textContent="Quitar";
       b.addEventListener("click", function(){
-        D.excepciones[f].splice(i,1);
+        D.excepciones[f]=D.excepciones[f].filter(function(x){ return x!==e; });
         if(!D.excepciones[f].length) delete D.excepciones[f];
         guardar(); pintarExcep();
       });
       d.appendChild(s); d.appendChild(b); c.appendChild(d);
     });
   });
+  if(!algo) c.innerHTML='<p class="ayuda">No hay cambios registrados para hoy ni para los próximos días.</p>';
 }
+$("xFiltroRuta").addEventListener("change", pintarExcep);
+
+$("btnCopiarCambios").addEventListener("click", function(){
+  var f=hoyISO(), l=D.excepciones[f]||[];
+  if(!l.length){ alert("No hay cambios registrados para hoy."); return; }
+  var porRuta={};
+  l.forEach(function(e){
+    var a=alumnoPorId(e.alumno), rs=rutasDe(a);
+    if(e.tipo==="cambia_ruta"&&e.ruta&&rs.indexOf(e.ruta)===-1) rs.push(e.ruta);
+    rs.forEach(function(r){
+      if(!porRuta[r]) porRuta[r]=[];
+      porRuta[r].push("• "+nombreAlumno(e.alumno)+": "+textoExcep(e)+(e.motivo?" ("+e.motivo+")":""));
+    });
+  });
+  var t=["CAMBIOS DE HOY "+f,""];
+  Object.keys(porRuta).sort().forEach(function(r){
+    t.push("RUTA "+r+":");
+    porRuta[r].forEach(function(x){ t.push(x); });
+    t.push("");
+  });
+  if(navigator.clipboard) navigator.clipboard.writeText(t.join("\n"));
+  $("btnCopiarCambios").textContent="CAMBIOS COPIADOS";
+  setTimeout(function(){ $("btnCopiarCambios").textContent="COPIAR LOS CAMBIOS DE HOY"; },2000);
+});
 
 /* ======================= CSV ======================= */
-var COLS = ["nombre","seccion","grado","ruta_am","ruta_pm","orden_am","orden_pm","direccion_recogida","referencia","direccion_entrega","tutor","whatsapp","correo","coordenadas_recogida","coordenadas_entrega","dias","turnos"];
+var COLS = ["nombre","seccion","grado","ruta_am","ruta_pm","orden_am","orden_pm","direccion_recogida","referencia","direccion_entrega","tutor","whatsapp","correo","coordenadas_recogida","coordenadas_entrega","punto_encuentro_am","punto_encuentro_pm","dias","turnos"];
 
 function descargar(nombre, contenido, tipo){
   var b = new Blob([contenido], {type: tipo});
@@ -739,7 +1101,7 @@ function descargar(nombre, contenido, tipo){
 $("btnPlantilla").addEventListener("click", function(){
   var filas = [COLS.join(",")];
   filas.push('Sofía Ramírez,PRIM,1RO,1,1,1,3,"Av. Toluca 45, Olivar de los Padres",Portón blanco,,Laura (mamá),5512345678,laura@correo.com,"19.3456, -99.2789",,LMXJV,AMPM');
-  filas.push('Diego Herrera,BACH,4TO,1,3,2,1,"Calle Pino 12",Frente a la tienda,,Marco (papá),5587654321,marco@correo.com,,,LMJ,AM');
+  filas.push('Diego Herrera,BACH,4TO,1,3,2,1,"Calle Pino 12",Frente a la tienda,,Marco (papá),5587654321,marco@correo.com,,,"Costco Santa Fe",,LMJ,AM');
   descargar("plantilla-alumnos.csv", "\uFEFF" + filas.join("\n"), "text/csv;charset=utf-8");
 });
 
@@ -800,13 +1162,15 @@ $("fileCsv").addEventListener("change", function(ev){
         dirRec: v("direccion_recogida"), ref: v("referencia"), dirEnt: v("direccion_entrega"),
         tutor: v("tutor"), tel: tel, email: v("correo"),
         coordRec: v("coordenadas_recogida"), coordEnt: v("coordenadas_entrega"),
+        ptoRec: v("punto_encuentro_am"), peRec: !!v("punto_encuentro_am"),
+        ptoEnt: v("punto_encuentro_pm"), peEnt: !!v("punto_encuentro_pm"),
         dias: dias,
         am: rAM ? true : (turnos.indexOf("AM") > -1 || turnos === ""),
         pm: rPM ? true : (turnos.indexOf("PM") > -1 || turnos === "")
       });
       nuevos++;
     }
-    guardar(); pintarTabla(); llenarSelectAlumnos(); pintarMapa();
+    guardar(); pintarTabla(); pintarMapa();
     var msg = '<div class="aviso ok">Se agregaron ' + nuevos + ' alumnos.</div>';
     if(malos.length) msg += '<div class="aviso">Revisa estos, se cargaron pero con datos raros:<br>' + malos.join("<br>") + '</div>';
     $("csvMsg").innerHTML = msg;
@@ -825,39 +1189,9 @@ function paquete(){
     excepciones: D.excepciones
   };
 }
-$("fbUrl").value = localStorage.getItem("tb_fburl") || "";
-$("fbUrl").addEventListener("change", function(){
-  localStorage.setItem("tb_fburl", $("fbUrl").value.trim().replace(/\/+$/,""));
-});
-
-function urlFb(){
-  var u = $("fbUrl").value.trim().replace(/\/+$/,"");
-  return u ? u + "/transporte.json" : null;
-}
-$("btnProbar").addEventListener("click", function(){
-  var u = urlFb();
-  if(!u){ $("fbMsg").innerHTML = '<div class="aviso mal">Falta la URL.</div>'; return; }
-  $("fbMsg").innerHTML = '<div class="aviso">Probando…</div>';
-  fetch(u).then(function(r){
-    $("fbMsg").innerHTML = r.ok
-      ? '<div class="aviso ok">Conexión correcta.</div>'
-      : '<div class="aviso mal">Respondió con error ' + r.status + '. Revisa las reglas de la base de datos.</div>';
-  }).catch(function(){
-    $("fbMsg").innerHTML = '<div class="aviso mal">No se pudo conectar. Revisa la URL o tu internet.</div>';
-  });
-});
 $("btnPublicar").addEventListener("click", function(){
-  var u = urlFb();
-  if(!u){ $("fbMsg").innerHTML = '<div class="aviso mal">Falta la URL de Firebase.</div>'; return; }
-  localStorage.setItem("tb_fburl", $("fbUrl").value.trim().replace(/\/+$/,""));
-  $("fbMsg").innerHTML = '<div class="aviso">Publicando…</div>';
-  fetch(u, {method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify(paquete())})
-    .then(function(r){
-      $("fbMsg").innerHTML = r.ok
-        ? '<div class="aviso ok">Publicado. Las auxiliares verán los cambios la próxima vez que abran la app.</div>'
-        : '<div class="aviso mal">Error ' + r.status + '. Las reglas de Firebase pueden estar bloqueando la escritura.</div>';
-    })
-    .catch(function(){ $("fbMsg").innerHTML = '<div class="aviso mal">No se pudo publicar. Revisa tu conexión.</div>'; });
+  if(!NUBE){ alert("Firebase no está configurado o no has entrado con tu cuenta."); return; }
+  estadoNube("Subiendo…"); subirNube();
 });
 
 $("btnBajarJson").addEventListener("click", function(){
@@ -912,6 +1246,8 @@ function refrescarEtiquetas(){
   $("fOrdenPM").style.background = pm ? "#fff" : "#f1f4f7";
   $("lbOrdenAM").textContent = "Orden de parada (mañana)" + (am ? "" : " — no aplica");
   $("lbOrdenPM").textContent = "Orden de parada (tarde)" + (pm ? "" : " — no aplica");
+  $("fPERec").disabled = !am; $("fPtoRec").disabled = !am;
+  $("fPEEnt").disabled = !pm; $("fPtoEnt").disabled = !pm;
   $("fDirRec").style.background = am ? "#fff" : "#f1f4f7";
   $("fDirEnt").style.background = pm ? "#fff" : "#f1f4f7";
   if(!am){ $("fDirRec").value = ""; $("fCoordRec").value = ""; }
@@ -995,13 +1331,19 @@ $("mpRuta").addEventListener("change", pintarMapa);
 /* ======================= ARRANQUE ======================= */
 function pintarTodo(){
   pintarDias(); llenarSelectRutas(); pintarRutas();
-  pintarTabla(); llenarSelectAlumnos(); pintarExcep(); pintarMapa(); refrescarEtiquetas();
+  pintarTabla(); pintarExcep(); pintarMapa(); refrescarEtiquetas(); pintarMotivos();
 }
-cargar();
-var limpiados = sanear();
-if(limpiados) guardar();
-$("xFecha").value = hoyISO();
-pintarTodo();
+var panelListo = false;
+function arrancarPanel(){
+  if(panelListo){ pintarTodo(); return; }
+  panelListo = true;
+  if(!NUBE) cargar();
+  var limpiados = sanear();
+  if(limpiados) guardar();
+  $("xFecha").value = hoyISO();
+  pintarTodo();
+}
+iniciarNube();
 </script>
 </body>
 </html>

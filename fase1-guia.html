@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fase 1 · Montaje — Transporte Bilbao</title>
+<style>
+:root{--tinta:#1c2430;--suave:#5a6675;--linea:#dfe4ea;--acento:#1f5fa9;--ok:#1d7a4c;--alerta:#a8620a;--no:#a52222;--fondo:#fbfcfd;}
+*{box-sizing:border-box;}
+body{font-family:"Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;color:var(--tinta);background:var(--fondo);
+     margin:0 auto;padding:28px 20px 60px;line-height:1.55;font-size:15px;max-width:900px;}
+header{border-bottom:3px solid var(--acento);padding-bottom:14px;margin-bottom:24px;}
+h1{font-size:25px;margin:0 0 4px;line-height:1.25;}
+.sub{color:var(--suave);font-size:14px;margin:0;}
+h2{font-size:19px;margin:30px 0 10px;padding-top:14px;border-top:1px solid var(--linea);}
+h2 .num{display:inline-block;background:var(--acento);color:#fff;min-width:26px;height:26px;border-radius:13px;padding:0 7px;
+        text-align:center;font-size:14px;line-height:26px;margin-right:8px;vertical-align:2px;}
+p{margin:8px 0;} ol,ul{margin:8px 0;padding-left:22px;} li{margin:6px 0;}
+code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-family:Consolas,monospace;font-size:13px;}
+pre{background:#1c2430;color:#e8edf3;padding:14px 16px;border-radius:8px;font-size:12.5px;overflow-x:auto;line-height:1.45;}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px;background:#fff;}
+th,td{border:1px solid var(--linea);padding:8px 10px;text-align:left;vertical-align:top;}
+th{background:#eef2f7;font-weight:600;}
+.ruta{font-family:Consolas,monospace;font-size:13px;background:#eef2f7;padding:2px 6px;border-radius:4px;}
+.caja{background:#fff;border:1px solid var(--linea);border-left:4px solid var(--acento);padding:12px 16px;margin:14px 0;border-radius:0 6px 6px 0;}
+.caja.aviso{border-left-color:var(--alerta);background:#fffaf2;}
+.caja.ok{border-left-color:var(--ok);background:#f4fbf7;}
+.caja.mal{border-left-color:var(--no);background:#fdf5f5;}
+.caja h4{margin:0 0 6px;font-size:15px;}
+.check{list-style:none;padding-left:0;}
+.check li:before{content:"☐  ";color:var(--acento);font-weight:700;}
+.pie{margin-top:40px;padding-top:14px;border-top:1px solid var(--linea);color:var(--suave);font-size:13px;}
+@media print{body{background:#fff;padding:0;font-size:12px;}h2{page-break-after:avoid;}table,.caja,pre{page-break-inside:avoid;}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Fase 1 · Guía de montaje</h1>
+  <p class="sub">Cuentas de las auxiliares y cambios del día llegando solos · Transporte Bilbao · Todo gratis, sin tarjeta</p>
+</header>
+
+<h2><span class="num">✓</span>Lo que cambia con esta fase</h2>
+<table>
+  <tr><th>Antes</th><th>Ahora</th></tr>
+  <tr><td>La auxiliar entraba solo con <code>ruta1</code>, fácil de adivinar</td><td>Entra con <code>ruta1</code> y una contraseña. Solo la pide la primera vez; el celular la recuerda</td></tr>
+  <tr><td>Los datos vivían en tu computadora y había que pasar archivos</td><td>Viven en Firebase, protegidos. Lo que guardas en el panel se sube solo</td></tr>
+  <tr><td>Un cambio del día no llegaba al celular de la auxiliar</td><td>Le llega en segundos, <strong>aunque ya vaya en ruta</strong>. El celular vibra y le dice qué cambió; lo ya marcado no se toca</td></tr>
+  <tr><td>El reporte de cada ruta se quedaba en el celular</td><td>Al cerrar la ruta se guarda en la nube. Si no hay señal, sube solo después</td></tr>
+  <tr><td>Los datos de los alumnos no podían subir a GitHub</td><td>Ya no hace falta: GitHub solo tiene el código, los datos están detrás de las contraseñas</td></tr>
+</table>
+
+<h2><span class="num">0</span>Antes de empezar: revisa el proyecto</h2>
+<p>El proyecto <code>rutas-bilbao</code> ya existe de una versión anterior. Antes de tocarlo, confirma que no tenga una base de datos en uso, porque las reglas nuevas cierran todo lo que no sea del transporte.</p>
+<ol>
+  <li>Entra a <strong>console.firebase.google.com</strong> y abre <code>rutas-bilbao</code>.</li>
+  <li>Menú izquierdo → <strong>Firestore Database</strong>.</li>
+</ol>
+<table>
+  <tr><th>Lo que ves</th><th>Qué hacer</th></tr>
+  <tr><td>Un botón "Crear base de datos"</td><td>Perfecto, está limpio. Sigue con el paso 1.</td></tr>
+  <tr><td>Colecciones con datos, o la pestaña Reglas con algo distinto al texto por defecto</td><td><strong>Detente y mándame captura.</strong> Si la versión anterior sigue en uso, conviene crear un proyecto nuevo (<code>transporte-bilbao</code>) para no romperla. Crear uno es gratis y toma 2 minutos.</td></tr>
+</table>
+
+<h2><span class="num">1</span>Activar el acceso con contraseña</h2>
+<ol>
+  <li>Menú izquierdo → <strong>Authentication</strong> → Comenzar.</li>
+  <li>Pestaña <strong>Método de acceso</strong> → <strong>Correo electrónico/contraseña</strong> → Habilitar (solo el primer interruptor) → Guardar.</li>
+  <li>Pestaña <strong>Configuración</strong> → <strong>Dominios autorizados</strong> → Agregar dominio → <code>angel-sant.github.io</code></li>
+</ol>
+
+<h2><span class="num">2</span>Crear las 7 cuentas</h2>
+<p>Authentication → pestaña <strong>Usuarios</strong> → <strong>Agregar usuario</strong>, una por una:</p>
+<table>
+  <tr><th>Correo</th><th>Para quién</th><th>Contraseña</th></tr>
+  <tr><td><span class="ruta">miguel.santana.mon@bilbao.edu.mx</span></td><td>Tú, coordinación</td><td>Una fuerte, solo tuya</td></tr>
+  <tr><td><span class="ruta">ruta1@rutas-bilbao.app</span></td><td>Auxiliares de la Ruta 1</td><td rowspan="6">Corta y fácil de teclear, mínimo 6 caracteres. Una distinta por ruta, por ejemplo <code>bilbao1</code>, <code>bilbao2</code>…</td></tr>
+  <tr><td><span class="ruta">ruta2@rutas-bilbao.app</span></td><td>Ruta 2</td></tr>
+  <tr><td><span class="ruta">ruta3@rutas-bilbao.app</span></td><td>Ruta 3</td></tr>
+  <tr><td><span class="ruta">ruta4@rutas-bilbao.app</span></td><td>Ruta 4</td></tr>
+  <tr><td><span class="ruta">ruta5@rutas-bilbao.app</span></td><td>Ruta 5</td></tr>
+  <tr><td><span class="ruta">ruta6@rutas-bilbao.app</span></td><td>Ruta 6</td></tr>
+</table>
+<div class="caja aviso">
+  <h4>Sobre el dominio <code>rutas-bilbao.app</code></h4>
+  <p>No es un correo real y no tiene que existir: Firebase solo lo usa como nombre de usuario. La auxiliar nunca lo ve, ella escribe <code>ruta1</code> y la app completa el resto. Es la misma técnica que usamos en la app de Congregación.</p>
+  <p>Si en el panel le cambias la clave a una ruta (por ejemplo a <code>ruta1bilbao</code>), la cuenta de Firebase se debe llamar igual: <code>ruta1bilbao@rutas-bilbao.app</code>.</p>
+</div>
+
+<h2><span class="num">3</span>Crear la base de datos</h2>
+<ol>
+  <li>Firestore Database → <strong>Crear base de datos</strong>.</li>
+  <li>Edición: la estándar. Modo: <strong>producción</strong>.</li>
+  <li>Ubicación: <strong>nam5 (Estados Unidos)</strong>, igual que Comunica. <em>No se puede cambiar después.</em></li>
+</ol>
+
+<h2><span class="num">4</span>Pegar las reglas de seguridad</h2>
+<p>Firestore Database → pestaña <strong>Reglas</strong> → borra todo lo que haya → pega el contenido del archivo <code>firestore.rules</code> → <strong>Publicar</strong>.</p>
+<pre>rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function coordinacion() {
+      return request.auth != null
+        &amp;&amp; request.auth.token.email in ['miguel.santana.mon@bilbao.edu.mx'];
+    }
+    function auxiliar() {
+      return request.auth != null
+        &amp;&amp; request.auth.token.email.matches('ruta[0-9]+@rutas-bilbao[.]app');
+    }
+    match /transporte/datos {
+      allow read: if coordinacion() || auxiliar();
+      allow write: if coordinacion();
+    }
+    match /bitacora/{id} {
+      allow create: if auxiliar() || coordinacion();
+      allow read: if coordinacion();
+      allow update, delete: if false;
+    }
+    match /{documento=**} {
+      allow read, write: if false;
+    }
+  }
+}</pre>
+<p>Qué garantizan: solo tu correo edita la lista; las auxiliares la leen pero no la cambian; nadie sin contraseña ve nada. Para sumar otra persona de coordinación, se agrega su correo a la lista entre corchetes.</p>
+
+<h2><span class="num">5</span>Copiar la configuración a los dos archivos</h2>
+<ol>
+  <li>Engrane junto a "Descripción general" → <strong>Configuración del proyecto</strong>.</li>
+  <li>Abajo, en <strong>Tus apps</strong>: si no hay ninguna web, toca el ícono <code>&lt;/&gt;</code>, ponle de nombre <code>transporte</code>, sin marcar Hosting, y registra.</li>
+  <li>Copia el bloque <code>firebaseConfig</code> que empieza con <code>apiKey</code>.</li>
+  <li>Abre <code>admin.html</code> con el Bloc de notas o VS Code, busca <code>var FIREBASE_CONFIG</code> y reemplaza los valores vacíos por los tuyos.</li>
+  <li><strong>Haz exactamente lo mismo en <code>index.html</code>.</strong> Los dos archivos llevan la misma configuración.</li>
+</ol>
+<div class="caja">
+  <p>Si prefieres, mándame aquí el bloque de configuración y te devuelvo los dos archivos ya llenos. Esas claves no son secretas: Firebase las diseña para ir dentro de la página, y lo que protege los datos son las reglas del paso 4.</p>
+</div>
+
+<h2><span class="num">6</span>Subir a GitHub</h2>
+<p>Sube <code>admin.html</code> e <code>index.html</code>, reemplazando los anteriores. Ya puedes borrar del repositorio el <code>datos.json</code>: la app dejó de usarlo.</p>
+<p><code>prueba.html</code> sigue igual que antes: solo en tu computadora, nunca en GitHub.</p>
+
+<h2><span class="num">7</span>La primera subida de tus alumnos</h2>
+<div class="caja mal">
+  <h4>Este paso es el más importante</h4>
+  <p>La primera vez que entres al panel con la nube vacía, el panel <strong>sube lo que tenga guardado ese navegador</strong>. Tus alumnos de la Ruta 1 y la Ruta 6 viven en el navegador de la computadora donde los capturaste. Abre el panel <strong>en esa misma computadora y ese mismo navegador</strong>.</p>
+  <p>Por si acaso, antes de entrar descarga un respaldo: pestaña Importar/Publicar → DESCARGAR datos.json.</p>
+</div>
+<ol>
+  <li>Abre <code>angel-sant.github.io/…/admin.html</code> en esa computadora.</li>
+  <li>Entra con tu correo y tu contraseña.</li>
+  <li>Arriba a la derecha debe decir <strong>"Primera subida: 32 alumnos…"</strong> y luego <strong>"Guardado en la nube"</strong>.</li>
+  <li>Comprueba en Firebase → Firestore que aparezca la colección <code>transporte</code> con el documento <code>datos</code>.</li>
+</ol>
+<p>Si en lugar de 32 dice "todavía sin alumnos", abriste otro navegador. No pasa nada: en Importar/Publicar usa <strong>Restaurar desde un respaldo</strong> con el <code>datos.json</code> que ya tienes, y se sube solo.</p>
+
+<h2><span class="num">8</span>La prueba de fuego</h2>
+<p>Necesitas el celular y la computadora al mismo tiempo.</p>
+<ol>
+  <li>En el celular abre <code>index.html</code>, escribe <code>ruta6</code> y su contraseña.</li>
+  <li>Elige Mañana, COMENZAR RUTA, y marca a los niños de la primera parada.</li>
+  <li>En la computadora, en el panel → Cambios del día → Hoy → busca a un niño de una parada que falte → <em>No usa el transporte</em> → motivo <em>Enfermo</em> → Registrar.</li>
+  <li>En unos segundos, el celular debe vibrar y mostrar abajo: <strong>"Cambio de coordinación. Ya no va: …"</strong>, y ese niño debe desaparecer de su parada.</li>
+  <li>Termina y cierra la ruta. En Firebase debe aparecer la colección <code>bitacora</code> con el recorrido.</li>
+</ol>
+
+<h2><span class="num">!</span>Lo que todavía no hace</h2>
+<ul>
+  <li><strong>Los avisos a papás siguen sin llegarles.</strong> Se registran, pero eso es la fase 3, con OneSignal y Cloudflare.</li>
+  <li><strong>Cada auxiliar puede leer la lista completa</strong>, no solo la de su ruta. Separarlo haría la lista mucho más difícil de mantener, y las seis son personal del colegio. Los papás, en la fase 2, sí verán únicamente lo de sus hijos.</li>
+  <li><strong>El panel no se actualiza solo</strong> si dos personas lo usan a la vez: gana el último que guarda. Mientras seas solo tú, no importa.</li>
+  <li><strong>La primera vez, la auxiliar necesita internet</strong> para entrar. Después la app funciona sin señal y sube lo pendiente al recuperarla.</li>
+</ul>
+
+<h2><span class="num">☐</span>Lista de verificación</h2>
+<ul class="check">
+  <li>Revisé que <code>rutas-bilbao</code> no tuviera una base de datos en uso</li>
+  <li>Activé correo/contraseña y agregué <code>angel-sant.github.io</code> a dominios autorizados</li>
+  <li>Creé mi cuenta y las 6 de las rutas</li>
+  <li>Creé Firestore en nam5, modo producción</li>
+  <li>Pegué y publiqué las reglas</li>
+  <li>Llené <code>FIREBASE_CONFIG</code> en <code>admin.html</code> y en <code>index.html</code></li>
+  <li>Descargué un respaldo antes de la primera subida</li>
+  <li>Subí los dos archivos a GitHub</li>
+  <li>El panel dijo "Guardado en la nube" con 32 alumnos</li>
+  <li>La prueba de fuego vibró en el celular</li>
+</ul>
+
+<div class="pie">
+  Transporte Bilbao · Fase 1 · Preparado para Miguel Ángel Santana (Manveru) · Septiembre de 2026<br>
+  Todo en plan Spark de Firebase: gratis y sin tarjeta.
+</div>
+
+</body>
+</html>
