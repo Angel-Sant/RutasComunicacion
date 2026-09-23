@@ -74,7 +74,11 @@ button.linea{background:#fff;color:var(--azul);border:2px solid var(--azul);}
 </header>
 
 <section id="pCarga" class="wrap">
-  <div class="tarjeta"><h2>Cargando la información…</h2><p class="meta" id="cargaMsg">Un momento.</p></div>
+  <div class="tarjeta">
+    <h2 id="cargaTit">Cargando la información…</h2>
+    <p class="meta" id="cargaMsg">Un momento.</p>
+    <button class="gris chico oculto" id="btnSalirCarga">Entrar con otra clave</button>
+  </div>
 </section>
 
 <section id="pRetomar" class="wrap oculto">
@@ -125,6 +129,25 @@ button.linea{background:#fff;color:var(--azul);border:2px solid var(--azul);}
     <div id="ruExcep"></div>
     <button class="verde" id="btnComenzar">COMENZAR RUTA</button>
     <button class="gris chico" id="btnSalir1">Salir</button>
+  </div>
+</section>
+
+<section id="pPase" class="wrap oculto">
+  <div class="tarjeta" id="paseCab">
+    <div class="cuenta" id="pvCuenta"></div>
+    <h2 id="pvTitulo">Pase de lista de salida</h2>
+    <p class="meta" id="pvSub"></p>
+    <div id="pvEstado"></div>
+  </div>
+  <div class="tarjeta">
+    <h2>Niños de la ruta</h2>
+    <p class="meta">Marca a cada niño conforme sube a la unidad.</p>
+    <div id="pvLista"></div>
+  </div>
+  <div class="tarjeta">
+    <button class="verde" id="btnSalirColegio">SALIR DEL COLEGIO</button>
+    <button class="ambar" id="btnPedirLiberar">PEDIR A COORDINACIÓN QUE LIBERE LA RUTA</button>
+    <button class="gris chico" id="btnPaseAtras">Volver</button>
   </div>
 </section>
 
@@ -216,7 +239,7 @@ var S = { ruta:null, rutaNum:null, aux:null, turno:null, paradas:[], idx:0,
 
 function $(id){ return document.getElementById(id); }
 function ver(id){
-  ["pCarga","pRetomar","pLogin","pQuien","pTurno","pRuta","pParada","pAviso","pCierre","pResumen"].forEach(function(p){
+  ["pCarga","pRetomar","pLogin","pQuien","pTurno","pRuta","pPase","pParada","pAviso","pCierre","pResumen"].forEach(function(p){
     var el=$(p); if(el) el.classList.add("oculto");
   });
   $(id).classList.remove("oculto"); window.scrollTo(0,0);
@@ -263,7 +286,8 @@ function retomar(s){
   ver("pRetomar");
 }
 $("btnRetomar").addEventListener("click", function(){
-  if(S.pantalla==="aviso" && S.idx<S.paradas.length) mostrarAviso();
+  if(S.pantalla==="pase") mostrarPase();
+  else if(S.pantalla==="aviso" && S.idx<S.paradas.length) mostrarAviso();
   else if(S.idx>=S.paradas.length) irCierre();
   else mostrarParada();
 });
@@ -313,6 +337,7 @@ function escuchar(u){
   desuscribir=docDatos.onSnapshot(function(s){
     if(!s.exists||!s.data().alumnos){
       $("cargaMsg").innerHTML="Coordinación todavía no ha publicado la lista.<br>Intenta más tarde.";
+      $("btnSalirCarga").classList.remove("oculto");
       ver("pCarga"); return;
     }
     var d=s.data();
@@ -324,13 +349,22 @@ function escuchar(u){
     if(primera){
       primera=false;
       $("origenDatos").textContent="Conectado · lista al día";
-      var num=rutaPorClave((u.email||"").split("@")[0]);
+      var pref=(u.email||"").split("@")[0];
+      var num=rutaPorClave(pref);
       if(!num){
-        $("cargaMsg").innerHTML="Tu cuenta no corresponde a ninguna ruta.<br>Avisa a coordinación.";
+        var esCoord = /coordinacion/i.test(pref) || pref.indexOf(".") !== -1;
+        $("cargaTit").textContent = esCoord ? "Esta no es tu app" : "Cuenta sin ruta";
+        $("cargaMsg").innerHTML = esCoord
+          ? "La cuenta <b>"+(u.email||"")+"</b> es de coordinación.<br><br>"+
+            "Para el panel de coordinación abre <a href='admin.html'>admin.html</a>.<br>"+
+            "Esta app es para las auxiliares, con las claves ruta1 a ruta6."
+          : "La clave <b>"+pref+"</b> no corresponde a ninguna ruta.<br>Avisa a coordinación.";
+        $("btnSalirCarga").classList.remove("oculto");
         ver("pCarga"); return;
       }
       var ses=hayQueRetomar();
       if(ses && String(ses.rutaNum)===String(num)){ retomar(ses); return; }
+      escucharBajas();
       entrarRuta(num);
       return;
     }
@@ -338,6 +372,7 @@ function escuchar(u){
   }, function(err){
     if(err&&err.code==="permission-denied"){
       $("cargaMsg").innerHTML="Tu cuenta no tiene permiso para ver la lista.<br>Avisa a coordinación.";
+      $("btnSalirCarga").classList.remove("oculto");
       ver("pCarga"); return;
     }
     if(!cargarLocal()) $("cargaMsg").innerHTML="Sin conexión y sin lista guardada en este celular.";
@@ -421,12 +456,39 @@ function excepcionesDeHoy(){
   l.forEach(function(e){ m[e.alumno]=e; });
   return m;
 }
+var BAJAS_PAPAS={};
+function escucharBajas(){
+  if(!NUBE) return;
+  firebase.firestore().collection("bajas").where("fecha","==",hoy())
+    .onSnapshot(function(qs){
+      var antes=Object.keys(BAJAS_PAPAS).length;
+      BAJAS_PAPAS={};
+      qs.forEach(function(d){
+        var b=d.data();
+        if(b.cancelada) return;
+        /* el código debe pertenecer de verdad a ese alumno */
+        var ok=false;
+        (D.alumnos||[]).forEach(function(a){
+          if(a.id!==b.alumnoId) return;
+          (a.contactos||[{tel:a.tel}]).forEach(function(c){
+            var t=(c.tel||"").replace(/\D/g,"");
+            if((D.familias||{})[t] && D.familias[t].codigo===b.codigo) ok=true;
+          });
+        });
+        if(ok) BAJAS_PAPAS[b.alumnoId]=b;
+      });
+      if(Object.keys(BAJAS_PAPAS).length!==antes) actualizarEnVivo();
+    }, function(){});
+}
+
 function construirParadas(rutaNum, turno){
   var exc=excepcionesDeHoy(), dia=diaHoy(), esAM=(turno==="manana"), items=[];
 
   D.alumnos.forEach(function(a){
     var e=exc[a.id];
     if(e&&e.tipo==="no_asiste") return;
+    /* aviso de los papás: no regresa hoy */
+    if(!esAM && BAJAS_PAPAS[a.id]) return;
     if(e&&e.tipo==="solo_am"&&!esAM) return;
     if(e&&e.tipo==="solo_pm"&&esAM) return;
     var ruta=esAM?(a.rutaAM||a.ruta):(a.rutaPM||a.ruta);
@@ -560,6 +622,11 @@ function irTurno(){
 }
 $("btnManana").addEventListener("click", function(){ S.turno="manana"; armarRuta(); });
 $("btnTarde").addEventListener("click", function(){ S.turno="tarde"; armarRuta(); });
+$("btnSalirCarga").addEventListener("click", function(){
+  if(NUBE) firebase.auth().signOut().then(function(){ location.reload(); });
+  else location.reload();
+});
+
 function cerrarSesion(){
   if(S.inicio && !S.fin && !confirm("Tienes una ruta sin cerrar. ¿Salir de todos modos?")) return;
   if(NUBE) firebase.auth().signOut().then(function(){ location.reload(); });
@@ -610,6 +677,7 @@ function armarRuta(){
   ver("pRuta");
 }
 $("btnComenzar").addEventListener("click", function(){
+  if(S.turno==="tarde"){ mostrarPase(); return; }
   S.inicio=Date.now(); S.idx=0; guardar();
   /* se avisa a la primera parada antes de arrancar, salvo que sea punto de encuentro */
   if(S.paradas.length && !S.paradas[0].esPE){
@@ -617,6 +685,154 @@ $("btnComenzar").addEventListener("click", function(){
     else mostrarAviso();
   }
   else mostrarParada();
+});
+
+
+/* ================= PASE DE LISTA DE LA SALIDA (solo tarde) ================= */
+var MOTIVOS_PASE=["No salió del salón","Se fue con sus papás","Enfermería","Actividad extraescolar","No lo encontramos"];
+var docSalida=null, unsubSalida=null, salidaLiberada=false, salidaSolicitada=false;
+
+function idSalida(){ return hoy()+"_R"+S.rutaNum; }
+
+function mostrarPase(){
+  if(!S.abordo) S.abordo={};
+  $("pvCuenta").textContent="Ruta "+S.rutaNum+" · salida del colegio";
+  $("btnPaseAtras").classList.remove("oculto");
+  if(NUBE){
+    docSalida=firebase.firestore().collection("salidas").doc(idSalida());
+    if(unsubSalida) unsubSalida();
+    unsubSalida=docSalida.onSnapshot(function(s){
+      if(s.exists){
+        var d=s.data();
+        salidaLiberada=!!d.liberada;
+        salidaSolicitada=!!d.solicitada;
+        if(d.liberada && d.faltantes) d.faltantes.forEach(function(f){
+          if(f.resuelto && !S.abordo[f.id]) S.abordo[f.id]={estado:"no", motivo:f.motivo||"Liberado por coordinación"};
+        });
+      }
+      pintarPase();
+    }, function(){ pintarPase(); });
+  }
+  pintarPase();
+  S.pantalla="pase"; guardar();
+  ver("pPase");
+}
+
+function ninosDelPase(){
+  var r=[];
+  S.paradas.forEach(function(p){ p.ninos.forEach(function(n){ r.push(n); }); });
+  return r.sort(function(a,b){ return a.nombre.localeCompare(b.nombre); });
+}
+
+function pintarPase(){
+  var ns=ninosDelPase(), cont=$("pvLista");
+  cont.innerHTML="";
+  var arriba=0;
+  ns.forEach(function(n){
+    var e=S.abordo[n.id];
+    if(e && e.estado==="si") arriba++;
+    var d=document.createElement("div");
+    d.className="nino"+(e?(e.estado==="si"?" hecho-si":" hecho-no"):"");
+    d.innerHTML='<div class="nm">'+n.nombre+'</div><div class="gr">'+
+      (n.seccion?n.seccion+" "+n.grado:"")+' · parada '+(n.orden===99?"—":n.orden)+'</div>';
+    if(e){
+      var est=document.createElement("div");
+      est.className="est "+e.estado;
+      est.textContent=e.estado==="si" ? ("A bordo "+hora(e.ts||Date.now())) : ("No viaja · "+(e.motivo||""));
+      d.appendChild(est);
+      var bc=document.createElement("button");
+      bc.className="gris chico"; bc.textContent="Corregir";
+      bc.addEventListener("click", function(){ delete S.abordo[n.id]; guardar(); sincronizarSalida(); pintarPase(); });
+      d.appendChild(bc);
+    } else {
+      var b=document.createElement("button");
+      b.className="verde"; b.textContent="YA SUBIÓ";
+      b.addEventListener("click", function(){
+        S.abordo[n.id]={estado:"si", ts:Date.now()};
+        guardar(); sincronizarSalida(); pintarPase();
+      });
+      d.appendChild(b);
+    }
+    cont.appendChild(d);
+  });
+
+  var faltan=ns.length-Object.keys(S.abordo).length;
+  var completo=(faltan===0);
+  $("pvSub").textContent=arriba+" a bordo de "+ns.length+
+    (faltan? " · faltan "+faltan+" por resolver" : " · lista completa");
+
+  var est=$("pvEstado");
+  if(completo || salidaLiberada){
+    est.innerHTML='<div class="aviso ok"><b>'+
+      (completo?"Lista completa.":"Coordinación liberó la ruta.")+'</b> Ya puede salir del colegio.</div>';
+    $("btnSalirColegio").classList.remove("oculto");
+    $("btnPedirLiberar").classList.add("oculto");
+  } else {
+    est.innerHTML='<div class="aviso" style="border-left-color:var(--no);background:#fdf5f5">'+
+      '<b>No puede salir todavía.</b><br>Faltan '+faltan+' niño(s) por subir. '+
+      'Si alguno no va a viajar, coordinación debe resolverlo.'+
+      (salidaSolicitada?'<br><br><b>Solicitud enviada.</b> Esperando a coordinación…':'')+'</div>';
+    $("btnSalirColegio").classList.add("oculto");
+    $("btnPedirLiberar").classList.remove("oculto");
+    $("btnPedirLiberar").textContent=salidaSolicitada?"VOLVER A AVISAR A COORDINACIÓN":"PEDIR A COORDINACIÓN QUE LIBERE LA RUTA";
+  }
+}
+
+function sincronizarSalida(){
+  if(!NUBE || !docSalida) return;
+  var ns=ninosDelPase();
+  var faltantes=ns.filter(function(n){ return !S.abordo[n.id]; })
+                  .map(function(n){ return { id:n.id, nombre:n.nombre, parada:n.orden }; });
+  docSalida.set({
+    fecha:hoy(), ruta:String(S.rutaNum), turno:"tarde", auxiliar:S.aux||"",
+    total:ns.length, abordo:Object.keys(S.abordo).filter(function(k){ return S.abordo[k].estado==="si"; }).length,
+    faltantes:faltantes, actualizado:Date.now()
+  },{merge:true}).catch(function(){});
+}
+
+$("btnPedirLiberar").addEventListener("click", function(){
+  if(!NUBE){ alert("Sin conexión no se puede pedir la liberación. Comunícate por teléfono con coordinación."); return; }
+  var ns=ninosDelPase();
+  var faltantes=ns.filter(function(n){ return !S.abordo[n.id]; })
+                  .map(function(n){ return { id:n.id, nombre:n.nombre, parada:n.orden }; });
+  docSalida.set({
+    fecha:hoy(), ruta:String(S.rutaNum), turno:"tarde", auxiliar:S.aux||"",
+    total:ns.length, faltantes:faltantes, solicitada:true, solicitadaTs:Date.now(), actualizado:Date.now()
+  },{merge:true}).then(function(){
+    salidaSolicitada=true; pintarPase();
+    mostrarAvisoToast("Coordinación fue avisada. Espere su respuesta aquí.", 7000);
+  }).catch(function(){
+    alert("No se pudo avisar. Revisa tu señal o llama a coordinación.");
+  });
+});
+
+$("btnSalirColegio").addEventListener("click", function(){
+  var ns=ninosDelPase();
+  /* solo viaja quien fue marcado a bordo: si la ruta se liberó sin
+     resolver a alguien, ese niño no va en el recorrido */
+  var fuera=[];
+  S.paradas.forEach(function(p){
+    p.ninos=p.ninos.filter(function(n){
+      var e=S.abordo[n.id];
+      if(e && e.estado==="si") return true;
+      fuera.push(n.nombre);
+      return false;
+    });
+  });
+  S.paradas=S.paradas.filter(function(p){ return p.ninos.length; });
+  if(!S.paradas.length){ alert("No hay niños a bordo. No hay recorrido que hacer."); return; }
+  if(fuera.length) mostrarAvisoToast("No viajan hoy: "+fuera.join(", "), 8000);
+  S.inicio=Date.now(); S.idx=0;
+  if(unsubSalida){ unsubSalida(); unsubSalida=null; }
+  guardar();
+  if(!S.paradas[0].esPE){
+    if(CANAL_AVISOS==="app"){ avisarPorApp(S.paradas[0]); mostrarParada(); }
+    else mostrarAviso();
+  } else mostrarParada();
+});
+$("btnPaseAtras").addEventListener("click", function(){
+  if(unsubSalida){ unsubSalida(); unsubSalida=null; }
+  ver("pRuta");
 });
 
 /* ---------- parada ---------- */
@@ -661,14 +877,14 @@ function pintarNinos(){
                         :((esAM?"No subió":"No se entregó")+(n.motivoNo?" · "+n.motivoNo:"")))+'</div>';
       var bc=document.createElement("button");
       bc.className="gris chico"; bc.textContent="Corregir";
-      bc.addEventListener("click", function(){ n.estado=null; n.ts=null; guardar(); pintarNinos(); });
+      bc.addEventListener("click", function(){ n.estado=null; n.ts=null; guardar(); publicarAvance(n); pintarNinos(); });
       d.appendChild(bc);
     } else {
       d.innerHTML=cab+'<div class="btns"></div>';
       var w=d.querySelector(".btns");
       var bs=document.createElement("button");
       bs.className="verde"; bs.textContent=esAM?"SUBIÓ":"ENTREGADO";
-      bs.addEventListener("click", function(){ n.estado="si"; n.ts=Date.now(); guardar(); pintarNinos(); });
+      bs.addEventListener("click", function(){ n.estado="si"; n.ts=Date.now(); guardar(); publicarAvance(n); pintarNinos(); });
       var bn=document.createElement("button");
       bn.className="rojo"; bn.textContent="NO";
       bn.addEventListener("click", function(){ pedirMotivoNo(n); });
@@ -694,7 +910,7 @@ function pedirMotivoNo(n){
     b.style.marginTop="6px";
     b.textContent=m;
     b.addEventListener("click", function(){
-      n.estado="no"; n.ts=Date.now(); n.motivoNo=m; guardar(); pintarNinos();
+      n.estado="no"; n.ts=Date.now(); n.motivoNo=m; guardar(); publicarAvance(n); pintarNinos();
     });
     caja.appendChild(b);
   });
@@ -707,7 +923,7 @@ function pedirMotivoNo(n){
 
 $("btnTodos").addEventListener("click", function(){
   var p=S.paradas[S.idx], t=Date.now();
-  p.ninos.forEach(function(n){ if(!n.estado){ n.estado="si"; n.ts=t; } });
+  p.ninos.forEach(function(n){ if(!n.estado){ n.estado="si"; n.ts=t; publicarAvance(n); } });
   guardar(); pintarNinos();
 });
 $("btnAtras").addEventListener("click", function(){
@@ -851,10 +1067,60 @@ function irCierre(){
 $("btnCerrar").addEventListener("click", function(){
   S.fin=Date.now(); S.comentario=$("comentario").value.trim();
   guardarRecorrido();
+  publicarTodos();
   subirBitacora();
   try{ localStorage.removeItem("tb_sesion"); }catch(e){}
   mostrarResumen();
 });
+
+
+/* ---------- avance en vivo para los papás ----------
+   Cada vez que se marca a un niño, se actualiza el documento de su familia.
+   Solo ve lo de sus hijos: cada familia tiene su propio documento. */
+function codigoDe(tel){
+  var t=(tel||"").replace(/\D/g,"");
+  var f=(D.familias||{})[t];
+  return f?f.codigo:null;
+}
+function contactosDe(alumno){
+  var a=null;
+  D.alumnos.forEach(function(x){ if(x.id===alumno.id) a=x; });
+  if(!a) return [];
+  return (a.contactos&&a.contactos.length) ? a.contactos : [{tel:a.tel}];
+}
+function publicarAvance(nino){
+  if(!NUBE || !D.familias) return;
+  var codigos={};
+  contactosDe(nino).forEach(function(c){
+    var cod=codigoDe(c.tel);
+    if(cod) codigos[cod]=1;
+  });
+  if(!Object.keys(codigos).length) return;
+
+  var idx=-1, parada=null;
+  S.paradas.forEach(function(p,i){ p.ninos.forEach(function(n){ if(n.id===nino.id){ idx=i; parada=p; } }); });
+
+  var dato={
+    fecha:hoy(), ruta:String(S.rutaNum), turno:S.turno, auxiliar:S.aux||"",
+    inicio:S.inicio||null, fin:S.fin||null,
+    comentario:(S.motivo||"")+(S.comentario?" — "+S.comentario:""),
+    totalParadas:S.paradas.length, paradaActual:S.idx+1,
+    alumno:{ id:nino.id, nombre:nino.nombre,
+             parada:idx+1, punto:parada?parada.titulo:"",
+             estado:nino.estado||"pendiente", hora:nino.ts||null, motivoNo:nino.motivoNo||"" },
+    actualizado:Date.now()
+  };
+  var db=firebase.firestore();
+  Object.keys(codigos).forEach(function(cod){
+    var id=hoy()+"_"+S.rutaNum+"_"+S.turno+"_"+nino.id;
+    db.collection("familias").doc(cod).collection("dias").doc(id)
+      .set(JSON.parse(JSON.stringify(dato)), {merge:true}).catch(function(){});
+  });
+}
+function publicarTodos(){
+  if(!NUBE) return;
+  S.paradas.forEach(function(p){ p.ninos.forEach(publicarAvance); });
+}
 
 /* ---------- bitácora: el recorrido cerrado se guarda en la nube ----------
    Si no hay señal, Firestore lo guarda en el celular y lo sube solo después. */
