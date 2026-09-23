@@ -639,11 +639,24 @@ $("btnGuardarAl").addEventListener("click", function(){
     window.scrollTo(0,0);
     return;
   }
+  var movAM = insertarParada(a, "am");
+  var movPM = insertarParada(a, "pm");
+
   if(editandoId){
     for(var i=0;i<D.alumnos.length;i++){ if(D.alumnos[i].id === editandoId){ D.alumnos[i] = a; break; } }
   } else {
     D.alumnos.push(a);
   }
+
+  var notas = [];
+  [movAM, movPM].forEach(function(m){
+    if(!m) return;
+    var t = (m.turno==="am") ? "mañana" : "tarde";
+    if(m.compartida) notas.push("En la " + t + " comparte la parada de " + m.punto + ". Nadie se movió.");
+    else if(m.movidos) notas.push("En la " + t + " entra en la parada " + m.desde +
+      " y se recorrieron " + m.movidos + " parada(s) de la Ruta " + m.ruta + ".");
+  });
+  if(notas.length) alert(notas.join("\n"));
   guardar();
   var rutaVista = a.rutaAM || a.rutaPM || "";
   limpiarForm();
@@ -880,6 +893,64 @@ $("btnColegio").addEventListener("click", function(){
   D.colegio.correo = $("cMail").value.trim();
   guardar(); alert("Datos del colegio guardados.");
 });
+
+
+/* ============ INSERTAR UNA PARADA A MITAD DEL RECORRIDO ============
+   Si el número de parada ya está ocupado, los que siguen se recorren
+   un lugar. Salvo que sea un punto de encuentro: ahí se comparte. */
+function insertarParada(nuevo, turno){
+  var campoRuta = (turno==="am") ? "rutaAM" : "rutaPM";
+  var campoOrden = (turno==="am") ? "ordenAM" : "ordenPM";
+  var campoPE = (turno==="am") ? "peRec" : "peEnt";
+  var campoPto = (turno==="am") ? "ptoRec" : "ptoEnt";
+  var usa = (turno==="am") ? nuevo.am : nuevo.pm;
+  if(!usa) return null;
+
+  var r = nuevo[campoRuta] || nuevo.ruta;
+  var o = nuevo[campoOrden];
+  if(!r || !o || o === 99) return null;
+
+  var mismos = D.alumnos.filter(function(a){
+    if(a.id === nuevo.id) return false;
+    if(turno==="am" ? !a.am : !a.pm) return false;
+    return (a[campoRuta]||a.ruta) === r && (a[campoOrden]||a.orden||99) === o;
+  });
+  if(!mismos.length) return null;
+
+  var paradaEsPE = mismos.some(function(a){ return !!a[campoPE]; });
+  var nombrePto = "";
+  mismos.forEach(function(a){ if(a[campoPto] && !nombrePto) nombrePto = a[campoPto]; });
+
+  /* los dos son punto de encuentro: comparten parada, nadie se mueve */
+  if(paradaEsPE && nuevo[campoPE]) return { compartida:true, punto:nombrePto||"punto de encuentro", turno:turno };
+
+  /* la parada existente es punto de encuentro y el nuevo no está marcado: se pregunta */
+  if(paradaEsPE && !nuevo[campoPE]){
+    var pregunta = "La parada " + o + " de la Ruta " + r + " (" + (turno==="am"?"mañana":"tarde") + ") es un punto de encuentro" +
+      (nombrePto ? ': "' + nombrePto + '"' : "") + ", con " + mismos.length + " alumno(s).\n\n" +
+      "Aceptar = " + nuevo.nombre + " también sube ahí (comparten parada).\n" +
+      "Cancelar = es una parada nueva antes de esa, y las siguientes se recorren un lugar.";
+    if(confirm(pregunta)){
+      nuevo[campoPE] = true;
+      if(nombrePto && !nuevo[campoPto]) nuevo[campoPto] = nombrePto;
+      return { compartida:true, punto:nombrePto||"punto de encuentro", turno:turno };
+    }
+  }
+
+  /* desplazar: todos los de esa ruta y turno con parada >= o bajan un lugar */
+  var movidos = 0;
+  D.alumnos.forEach(function(a){
+    if(a.id === nuevo.id) return;
+    if(turno==="am" ? !a.am : !a.pm) return;
+    if((a[campoRuta]||a.ruta) !== r) return;
+    var ao = a[campoOrden] || a.orden || 99;
+    if(ao === 99 || ao < o) return;
+    a[campoOrden] = ao + 1;
+    if(!a.ordenAM && !a.ordenPM) a.orden = a[campoOrden];
+    movidos++;
+  });
+  return { movidos:movidos, desde:o, ruta:r, turno:turno };
+}
 
 /* ======================= EXCEPCIONES ======================= */
 var MOTIVOS_EXC = ["Enfermo","Cita médica","Lo llevan los papás","Se queda en casa de un familiar",
