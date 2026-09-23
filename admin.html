@@ -100,6 +100,8 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
   <button data-t="tAlumnos" class="act">Alumnos</button>
   <button data-t="tRutas">Rutas</button>
   <button data-t="tMapa">Mapa de lugares</button>
+  <button data-t="tFamilias">Familias y códigos</button>
+  <button data-t="tSalidas">Solicitudes y salidas <span id="pendCount" class="pill oculto" style="background:#b02525;color:#fff"></span></button>
   <button data-t="tExcep">Cambios del día</button>
   <button data-t="tDatos">Importar / Publicar</button>
 </nav>
@@ -147,10 +149,17 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
     </div>
     <p class="chico">Un punto de encuentro no recibe el aviso de "ya viene el camión", porque las familias ya están esperando ahí. Sí recibe el aviso de retraso.</p>
     <p class="chico">Para sacar las coordenadas: en Google Maps, mantén presionado el punto exacto y copia los números que aparecen. Pégalos tal cual, con la coma.</p>
+    <h3 style="margin-top:20px">Contactos que reciben los avisos</h3>
+    <p class="ayuda">Cada contacto recibe el aviso en su propio celular, sin verse entre ellos. Para papás separados o que trabajan aparte, registra los dos.</p>
     <div class="fila">
-      <div><label>Tutor *</label><input id="fTutor" placeholder="Laura (mamá)"></div>
+      <div><label>Contacto 1 *</label><input id="fTutor" placeholder="Laura (mamá)"></div>
       <div><label>WhatsApp * (10 dígitos)</label><input id="fTel" inputmode="numeric" placeholder="5512345678"></div>
       <div><label>Correo *</label><input id="fEmail" type="email" placeholder="laura@correo.com"></div>
+    </div>
+    <div class="fila">
+      <div><label>Contacto 2 <span class="chico" style="font-weight:400">(opcional)</span></label><input id="fTutor2" placeholder="Marco (papá)"></div>
+      <div><label>WhatsApp (10 dígitos)</label><input id="fTel2" inputmode="numeric" placeholder="5587654321"></div>
+      <div><label>Correo</label><input id="fEmail2" type="email" placeholder="marco@correo.com"></div>
     </div>
     <label>Días que usa el transporte</label>
     <div class="dias" id="fDias"></div>
@@ -226,6 +235,52 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
       <span><i style="background:#fff;border:1px dashed #b6c0cc"></i>Disponible</span>
     </div>
     <div id="mpSalida" class="grid-bus"></div>
+  </div>
+</section>
+
+
+<!-- ================= FAMILIAS ================= -->
+<section id="tFamilias" class="oculto">
+  <div class="card">
+    <h2>Familias y códigos</h2>
+    <p class="ayuda">Cada contacto tiene su propio código para entrar a la app de papás. Se genera solo al capturar el alumno: los hermanos comparten el código porque comparten el teléfono.</p>
+    <div class="fila" style="align-items:flex-end">
+      <div style="max-width:200px"><label>Ver ruta</label><select id="famRuta"><option value="">Todas</option></select></div>
+      <div style="max-width:200px"><label>Estado</label><select id="famEstado">
+        <option value="">Todos</option><option value="no">Sin activar</option><option value="si">Ya activados</option>
+      </select></div>
+      <div style="max-width:260px"><label>Buscar</label><input id="famBuscar" placeholder="Nombre, alumno o teléfono"></div>
+    </div>
+    <p class="ayuda" id="famResumen"></p>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Contacto</th><th>Hijos</th><th>Código</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="famBody"></tbody>
+      </table>
+    </div>
+    <button class="b linea" id="btnCopiarTodos">COPIAR TODOS LOS QUE FALTAN POR INVITAR</button>
+  </div>
+</section>
+
+
+<!-- ================= SOLICITUDES Y SALIDAS ================= -->
+<section id="tSalidas" class="oculto">
+  <div class="card">
+    <h2>Rutas esperando para salir</h2>
+    <p class="ayuda">Aparece cuando una auxiliar pide liberar su ruta porque falta un niño por subir. Resuelve al alumno o libera la ruta.</p>
+    <div id="listaSalidas"></div>
+  </div>
+
+  <div class="card">
+    <h2>Solicitudes de los papás</h2>
+    <p class="ayuda">Cambios de ruta y de lugar de entrega. Las bajas de "hoy no regresa" se aplican solas y aparecen abajo.</p>
+    <div id="listaSolicitudes"></div>
+  </div>
+
+  <div class="card">
+    <h2>Avisos de "hoy no regresa"</h2>
+    <p class="ayuda">Registrados por los papás desde su app. Ya están aplicados en la lista de las auxiliares.</p>
+    <div id="listaBajas"></div>
   </div>
 </section>
 
@@ -355,7 +410,8 @@ var D = {
     "6": {clave:"ruta6", cupo:19, inicio:"", auxiliares:""}
   },
   alumnos: [],
-  excepciones: {}
+  excepciones: {},
+  familias: {}
 };
 
 var editandoId = null;
@@ -372,11 +428,19 @@ function cargar(){
       if(p.rutas) D.rutas = p.rutas;
       if(p.alumnos) D.alumnos = p.alumnos;
       if(p.excepciones) D.excepciones = p.excepciones;
+    if(p.familias) D.familias = p.familias;
     }
   }catch(e){ console.error(e); }
 }
 function sanear(){
   var tocado = 0;
+  /* alumnos capturados antes de que existieran los contactos */
+  D.alumnos.forEach(function(a){
+    if(!a.contactos || !a.contactos.length){
+      a.contactos = [{ nombre:a.tutor||"", tel:a.tel||"", email:a.email||"" }];
+      tocado++;
+    }
+  });
   var vacio = /^\s*(no\s*aplica|n\/?a|ninguna?|-+|\.+)\s*$/i;
   D.alumnos.forEach(function(a){
     if(!a.am && a.dirRec && vacio.test(a.dirRec)){ a.dirRec = ""; tocado++; }
@@ -496,9 +560,10 @@ function iniciarNube(){
         D.rutas = c.rutas || D.rutas;
         D.alumnos = c.alumnos || [];
         D.excepciones = c.excepciones || {};
+        D.familias = c.familias || {};
         NUBE = true;
         try{ localStorage.setItem("tb_datos", JSON.stringify(D)); }catch(e){}
-        arrancarPanel();
+        arrancarPanel(); escucharOperacion();
         estadoNube("Conectado a la nube · " + D.alumnos.length + " alumnos", "ok");
       } else {
         /* primera vez: la nube está vacía, se sube lo que hay en esta computadora */
@@ -510,6 +575,7 @@ function iniciarNube(){
           subirNube();
         } else {
           estadoNube("Conectado a la nube · todavía sin alumnos", "ok");
+          escucharOperacion();
         }
       }
     }).catch(function(e){
@@ -543,7 +609,7 @@ Array.prototype.forEach.call(document.querySelectorAll("nav button"), function(b
   b.addEventListener("click", function(){
     Array.prototype.forEach.call(document.querySelectorAll("nav button"), function(x){ x.classList.remove("act"); });
     b.classList.add("act");
-    ["tAlumnos","tRutas","tMapa","tExcep","tDatos"].forEach(function(s){ $(s).classList.add("oculto"); });
+    ["tAlumnos","tRutas","tMapa","tFamilias","tSalidas","tExcep","tDatos"].forEach(function(s){ $(s).classList.add("oculto"); });
     $(b.dataset.t).classList.remove("oculto");
     window.scrollTo(0,0);
   });
@@ -562,10 +628,10 @@ function pintarDias(){
   });
 }
 function llenarSelectRutas(){
-  ["fRutaAM","fRutaPM","filtroRuta","xRuta","mpRuta","xFiltroRuta"].forEach(function(id){
+  ["fRutaAM","fRutaPM","filtroRuta","xRuta","mpRuta","xFiltroRuta","famRuta"].forEach(function(id){
     var s = $(id); if(!s) return;
     var prev = s.value;
-    s.innerHTML = (id === "filtroRuta" || id === "mpRuta" || id === "xFiltroRuta") ? '<option value="">Todas</option>' : "";
+    s.innerHTML = (id === "filtroRuta" || id === "mpRuta" || id === "xFiltroRuta" || id === "famRuta") ? '<option value="">Todas</option>' : "";
     Object.keys(D.rutas).forEach(function(k){
       var o = document.createElement("option");
       o.value = k; o.textContent = "Ruta " + k;
@@ -578,7 +644,7 @@ function llenarSelectRutas(){
 function limpiarForm(){
   editandoId = null;
   $("fmTitulo").textContent = "Agregar alumno";
-  ["fNombre","fOrdenAM","fOrdenPM","fDirRec","fRef","fDirEnt","fTutor","fTel","fEmail","fGrado","fCoordRec","fCoordEnt","fPtoRec","fPtoEnt"].forEach(function(id){ $(id).value = ""; });
+  ["fNombre","fOrdenAM","fOrdenPM","fDirRec","fRef","fDirEnt","fTutor","fTel","fEmail","fGrado","fCoordRec","fCoordEnt","fPtoRec","fPtoEnt","fTutor2","fTel2","fEmail2"].forEach(function(id){ $(id).value = ""; });
   $("fAM").checked = true; $("fPM").checked = true;
   Array.prototype.forEach.call(document.querySelectorAll(".diaCheck"), function(c){ c.checked = true; });
   $("btnCancelar").classList.add("oculto");
@@ -615,10 +681,17 @@ $("btnGuardarAl").addEventListener("click", function(){
     tutor: $("fTutor").value.trim(),
     tel: tel,
     email: $("fEmail").value.trim(),
+    contactos: [],
     dias: dias,
     am: $("fAM").checked,
     pm: $("fPM").checked
   };
+  var tel2 = $("fTel2").value.replace(/\D/g,"");
+  a.contactos = [{ nombre:a.tutor, tel:tel, email:a.email }];
+  if($("fTutor2").value.trim() || tel2 || $("fEmail2").value.trim()){
+    a.contactos.push({ nombre:$("fTutor2").value.trim(), tel:tel2, email:$("fEmail2").value.trim() });
+  }
+
   var errores = [];
   if(!a.nombre) errores.push("Falta el nombre.");
   if(!a.seccion) errores.push("Falta la sección.");
@@ -630,7 +703,14 @@ $("btnGuardarAl").addEventListener("click", function(){
   if(coordMala(a.coordRec)) errores.push("Las coordenadas de recogida deben ir como: 19.3456, -99.2789");
   if(coordMala(a.coordEnt)) errores.push("Las coordenadas de entrega deben ir como: 19.3456, -99.2789");
   if(!a.tutor) errores.push("Falta el tutor.");
-  if(tel.length !== 10) errores.push("El WhatsApp debe tener 10 dígitos (sin 52 ni espacios).");
+  if(tel.length !== 10) errores.push("El WhatsApp del contacto 1 debe tener 10 dígitos (sin 52 ni espacios).");
+  if(a.contactos.length > 1){
+    var c2 = a.contactos[1];
+    if(!c2.nombre) errores.push("Falta el nombre del contacto 2.");
+    if(c2.tel.length !== 10) errores.push("El WhatsApp del contacto 2 debe tener 10 dígitos.");
+    if(!c2.email || c2.email.indexOf("@") === -1) errores.push("El correo del contacto 2 no parece válido.");
+    if(c2.tel === tel) errores.push("Los dos contactos tienen el mismo WhatsApp. Si es la misma persona, deja solo el contacto 1.");
+  }
   if(!a.email || a.email.indexOf("@") === -1) errores.push("El correo no parece válido.");
   if(!dias.length) errores.push("Marca al menos un día.");
   if(!a.am && !a.pm) errores.push("Marca al menos un turno.");
@@ -662,7 +742,7 @@ $("btnGuardarAl").addEventListener("click", function(){
   var rutaVista = a.rutaAM || a.rutaPM || "";
   limpiarForm();
   if(rutaVista){ $("filtroRuta").value = rutaVista; }
-  pintarTabla(); llenarSelectAlumnos(); pintarMapa();
+  pintarTabla(); pintarMapa(); pintarFamilias();
 });
 
 function editar(id){
@@ -682,6 +762,10 @@ function editar(id){
   $("fSecc").value = a.seccion || "PRIM"; $("fGrado").value = a.grado || "";
   $("fCoordRec").value = a.coordRec || (a.lat && a.lng ? a.lat + ", " + a.lng : "");
   $("fCoordEnt").value = a.coordEnt || "";
+  var cs = a.contactos || [{nombre:a.tutor, tel:a.tel, email:a.email}];
+  $("fTutor2").value = cs[1] ? (cs[1].nombre||"") : "";
+  $("fTel2").value   = cs[1] ? (cs[1].tel||"")    : "";
+  $("fEmail2").value = cs[1] ? (cs[1].email||"")  : "";
   $("fPERec").checked = !!a.peRec; $("fPtoRec").value = a.ptoRec || "";
   $("fPEEnt").checked = !!a.peEnt; $("fPtoEnt").value = a.ptoEnt || "";
   refrescarEtiquetas();
@@ -951,6 +1035,355 @@ function insertarParada(nuevo, turno){
     movidos++;
   });
   return { movidos:movidos, desde:o, ruta:r, turno:turno };
+}
+
+
+/* ======================= FAMILIAS Y CÓDIGOS =======================
+   Un código por contacto, identificado por su teléfono.
+   Los hermanos comparten código porque comparten el teléfono del tutor. */
+var LETRAS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";   /* sin I, O, 0, 1: se confunden al dictarlas */
+function nuevoCodigo(){
+  function bloque(n){
+    var s = "";
+    for(var i=0;i<n;i++) s += LETRAS[Math.floor(Math.random()*LETRAS.length)];
+    return s;
+  }
+  var c;
+  do { c = "BIL-" + bloque(4) + "-" + bloque(4); } while(codigoExiste(c));
+  return c;
+}
+function codigoExiste(c){
+  var hay = false;
+  Object.keys(D.familias||{}).forEach(function(t){ if(D.familias[t].codigo === c) hay = true; });
+  return hay;
+}
+
+/* revisa todos los alumnos y crea el código que falte */
+function sincronizarFamilias(){
+  if(!D.familias) D.familias = {};
+  var nuevos = 0, vistos = {};
+  D.alumnos.forEach(function(a){
+    (a.contactos||[]).forEach(function(c){
+      var t = (c.tel||"").replace(/\D/g,"");
+      if(t.length !== 10) return;
+      vistos[t] = true;
+      if(!D.familias[t]){
+        D.familias[t] = { codigo:nuevoCodigo(), nombre:c.nombre||"", activado:false, creado:new Date().toISOString() };
+        nuevos++;
+      } else if(c.nombre && !D.familias[t].nombre){
+        D.familias[t].nombre = c.nombre;
+      }
+    });
+  });
+  /* teléfonos que ya no pertenecen a ningún alumno quedan marcados, no se borran */
+  Object.keys(D.familias).forEach(function(t){ D.familias[t].sinHijos = !vistos[t]; });
+  return nuevos;
+}
+
+function hijosDe(tel){
+  return D.alumnos.filter(function(a){
+    return (a.contactos||[]).some(function(c){ return (c.tel||"").replace(/\D/g,"") === tel; });
+  });
+}
+function rutasDeAlumnos(lista){
+  var r = {};
+  lista.forEach(function(a){
+    var ra = a.rutaAM || (a.am ? a.ruta : ""), rp = a.rutaPM || (a.pm ? a.ruta : "");
+    if(ra) r[ra] = 1;
+    if(rp) r[rp] = 1;
+  });
+  return Object.keys(r).sort();
+}
+function ligaApp(){
+  return location.href.replace(/admin\.html.*$/, "") + "papas.html";
+}
+function mensajeInvitacion(tel){
+  var f = D.familias[tel], hijos = hijosDe(tel);
+  var nom = hijos.map(function(a){ return a.nombre; }).join(" y ");
+  return "Buen día, " + (f.nombre || "") + ". Le comparto el acceso a la app de transporte del " +
+    D.colegio.nombre + ", donde podrá ver el recorrido de " + nom + " y recibir los avisos.\n\n" +
+    ligaApp() + "\n\nSu código: " + f.codigo + "\n\n" +
+    "Se escribe una sola vez. Le sugerimos agregarla a la pantalla de inicio de su celular.";
+}
+
+function pintarFamilias(){
+  sincronizarFamilias();
+  var fr = $("famRuta").value, fe = $("famEstado").value;
+  var q = $("famBuscar").value.trim().toLowerCase();
+  var tb = $("famBody"); tb.innerHTML = "";
+  var total = 0, activados = 0, mostrados = 0;
+
+  Object.keys(D.familias).sort(function(x,y){
+    return (D.familias[x].nombre||"").localeCompare(D.familias[y].nombre||"");
+  }).forEach(function(tel){
+    var f = D.familias[tel], hijos = hijosDe(tel);
+    if(!hijos.length) return;
+    total++;
+    if(f.activado) activados++;
+    var rutas = rutasDeAlumnos(hijos);
+    if(fr && rutas.indexOf(fr) === -1) return;
+    if(fe === "si" && !f.activado) return;
+    if(fe === "no" && f.activado) return;
+    if(q){
+      var texto = (f.nombre + " " + tel + " " + hijos.map(function(a){ return a.nombre; }).join(" ")).toLowerCase();
+      if(texto.indexOf(q) === -1) return;
+    }
+    mostrados++;
+
+    var tr = document.createElement("tr");
+    function td(txt){ var c = document.createElement("td"); if(txt!==undefined) c.textContent = txt; tr.appendChild(c); return c; }
+    var c1 = td(f.nombre || "(sin nombre)");
+    var sub = document.createElement("div");
+    sub.style.cssText = "font-size:12px;color:var(--suave)";
+    sub.textContent = tel;
+    c1.appendChild(sub);
+
+    var ch = td();
+    hijos.forEach(function(a){
+      var d = document.createElement("div");
+      d.textContent = a.nombre;
+      var r = document.createElement("span");
+      r.className = "pill"; r.style.marginLeft = "6px";
+      r.textContent = rutasDeAlumnos([a]).map(function(x){ return "R" + x; }).join("/");
+      d.appendChild(r);
+      ch.appendChild(d);
+    });
+
+    var cc = td(f.codigo);
+    cc.style.cssText = "font-family:Consolas,monospace;font-weight:700";
+
+    var ce = td(f.activado ? "Activado" : "Sin activar");
+    ce.style.color = f.activado ? "var(--ok)" : "var(--amb)";
+    ce.style.fontWeight = "600";
+
+    var acc = document.createElement("td");
+    var bi = document.createElement("button");
+    bi.className = "mini"; bi.textContent = "Copiar invitación";
+    bi.addEventListener("click", function(){
+      if(navigator.clipboard) navigator.clipboard.writeText(mensajeInvitacion(tel));
+      bi.textContent = "¡Copiado!";
+      setTimeout(function(){ bi.textContent = "Copiar invitación"; }, 1800);
+    });
+    var br = document.createElement("button");
+    br.className = "mini rojo"; br.textContent = "Regenerar";
+    br.addEventListener("click", function(){
+      if(!confirm("Se crea un código nuevo para " + (f.nombre||tel) + ".\n\n" +
+                  "El anterior deja de servir y hay que mandarle el nuevo. Úsalo si el código se filtró o si cambió de celular.")) return;
+      f.codigo = nuevoCodigo(); f.activado = false;
+      guardar(); pintarFamilias();
+    });
+    acc.appendChild(bi); acc.appendChild(br);
+    tr.appendChild(acc);
+    tb.appendChild(tr);
+  });
+
+  if(!mostrados){
+    var tr = document.createElement("tr"), td0 = document.createElement("td");
+    td0.colSpan = 5; td0.style.cssText = "padding:16px;color:var(--suave)";
+    td0.textContent = total ? "Ninguna familia coincide con el filtro." : "Todavía no hay contactos capturados.";
+    tr.appendChild(td0); tb.appendChild(tr);
+  }
+  $("famResumen").textContent = total + " contactos con hijos en el transporte · " +
+    activados + " ya activaron la app · " + (total - activados) + " por invitar";
+}
+["famRuta","famEstado","famBuscar"].forEach(function(id){
+  $(id).addEventListener(id === "famBuscar" ? "input" : "change", pintarFamilias);
+});
+$("btnCopiarTodos").addEventListener("click", function(){
+  var t = [];
+  Object.keys(D.familias).forEach(function(tel){
+    var f = D.familias[tel];
+    if(f.activado || !hijosDe(tel).length) return;
+    t.push("=== " + (f.nombre||tel) + " · " + tel + " ===\n" + mensajeInvitacion(tel));
+  });
+  if(!t.length){ alert("Todas las familias ya activaron la app."); return; }
+  if(navigator.clipboard) navigator.clipboard.writeText(t.join("\n\n"));
+  $("btnCopiarTodos").textContent = t.length + " INVITACIONES COPIADAS";
+  setTimeout(function(){ $("btnCopiarTodos").textContent = "COPIAR TODOS LOS QUE FALTAN POR INVITAR"; }, 2500);
+});
+
+
+/* ======================= SOLICITUDES, BAJAS Y SALIDAS ======================= */
+var SOLICITUDES=[], BAJAS=[], SALIDAS=[];
+
+function escucharOperacion(){
+  if(!NUBE) return;
+  var db=firebase.firestore();
+  db.collection("solicitudes").where("estado","==","pendiente")
+    .onSnapshot(function(qs){
+      SOLICITUDES=[]; qs.forEach(function(d){ SOLICITUDES.push(Object.assign({id:d.id}, d.data())); });
+      pintarOperacion();
+    }, function(){});
+  db.collection("bajas").where("fecha","==",hoyISO())
+    .onSnapshot(function(qs){
+      BAJAS=[]; qs.forEach(function(d){ var b=d.data(); if(!b.cancelada) BAJAS.push(Object.assign({id:d.id}, b)); });
+      pintarOperacion();
+    }, function(){});
+  db.collection("salidas").where("fecha","==",hoyISO())
+    .onSnapshot(function(qs){
+      SALIDAS=[]; qs.forEach(function(d){ SALIDAS.push(Object.assign({id:d.id}, d.data())); });
+      pintarOperacion();
+    }, function(){});
+}
+
+function hhmmDe(ts){
+  if(!ts) return "";
+  var d=new Date(ts);
+  var h=d.getHours(), m=String(d.getMinutes()).padStart(2,"0");
+  var ap=h<12?"a.m.":"p.m."; var h12=h%12; if(h12===0) h12=12;
+  return h12+":"+m+" "+ap;
+}
+function cupoRuta(k, turno){
+  var r=D.rutas[k]; if(!r) return {libres:0,cupo:0,ocupados:0};
+  var n=0;
+  D.alumnos.forEach(function(a){
+    if(turno==="am"){ if(a.am && (a.rutaAM||a.ruta)===k) n++; }
+    else { if(a.pm && (a.rutaPM||a.ruta)===k) n++; }
+  });
+  return { ocupados:n, cupo:r.cupo||0, libres:(r.cupo||0)-n };
+}
+
+function pintarOperacion(){
+  /* ---- salidas ---- */
+  var cs=$("listaSalidas"); cs.innerHTML="";
+  var pendientes=SALIDAS.filter(function(s){ return s.solicitada && !s.liberada; });
+  if(!pendientes.length){
+    cs.innerHTML='<p class="ayuda">Ninguna ruta está esperando. Cuando una auxiliar lo pida, aparece aquí y suena una alerta.</p>';
+  }
+  pendientes.forEach(function(s){
+    var d=document.createElement("div");
+    d.style.cssText="border:2px solid #b02525;border-radius:10px;padding:14px;margin-bottom:12px;background:#fdf5f5";
+    var faltan=(s.faltantes||[]).map(function(f){ return f.nombre; }).join(", ");
+    d.innerHTML='<h3 style="margin:0;color:#b02525">Ruta '+s.ruta+' esperando desde las '+hhmmDe(s.solicitadaTs)+'</h3>'+
+      '<p style="margin:6px 0">Auxiliar: '+(s.auxiliar||"—")+' · '+(s.abordo||0)+' de '+(s.total||0)+' a bordo</p>'+
+      '<p style="margin:6px 0"><b>Falta(n):</b> '+(faltan||"—")+'</p>';
+    var acc=document.createElement("div");
+    (s.faltantes||[]).forEach(function(f){
+      var b=document.createElement("button");
+      b.className="mini"; b.style.marginBottom="6px";
+      b.textContent=f.nombre+": no viaja hoy";
+      b.addEventListener("click", function(){
+        var motivo=prompt("Motivo por el que "+f.nombre+" no viaja hoy:", "No se presentó");
+        if(motivo===null) return;
+        f.resuelto=true; f.motivo=motivo;
+        firebase.firestore().collection("salidas").doc(s.id)
+          .set({faltantes:s.faltantes, actualizado:Date.now()},{merge:true});
+        /* además queda como cambio del día, para el historial */
+        if(!D.excepciones[hoyISO()]) D.excepciones[hoyISO()]=[];
+        D.excepciones[hoyISO()]=D.excepciones[hoyISO()].filter(function(x){ return x.alumno!==f.id; });
+        D.excepciones[hoyISO()].push({alumno:f.id, tipo:"solo_am", motivo:motivo, aviso:"Resuelto en la salida", registrado:new Date().toISOString()});
+        guardar(); pintarExcep();
+      });
+      acc.appendChild(b);
+    });
+    var bl=document.createElement("button");
+    bl.className="b verde"; bl.style.width="100%";
+    bl.textContent="LIBERAR LA RUTA "+s.ruta+" PARA QUE SALGA";
+    bl.addEventListener("click", function(){
+      if(!confirm("Se libera la Ruta "+s.ruta+" y la auxiliar podrá salir.\n\n"+
+                  "Los niños que no subieron quedan fuera del recorrido de hoy. ¿Continuar?")) return;
+      firebase.firestore().collection("salidas").doc(s.id).set({
+        liberada:true, liberadaPor:(usuarioAdmin?usuarioAdmin.email:""), liberadaTs:Date.now(), actualizado:Date.now()
+      },{merge:true});
+    });
+    acc.appendChild(bl);
+    d.appendChild(acc);
+    cs.appendChild(d);
+  });
+
+  /* ---- solicitudes ---- */
+  var cso=$("listaSolicitudes"); cso.innerHTML="";
+  if(!SOLICITUDES.length) cso.innerHTML='<p class="ayuda">No hay solicitudes pendientes.</p>';
+  SOLICITUDES.sort(function(a,b){ return a.ts-b.ts; }).forEach(function(s){
+    var d=document.createElement("div");
+    d.style.cssText="border:1px solid var(--linea);border-left:4px solid var(--amb);border-radius:0 8px 8px 0;padding:14px;margin-bottom:12px;background:#fffaf2";
+    var que, extra="";
+    if(s.tipo==="ruta"){
+      var c=cupoRuta(s.rutaDestino,"pm");
+      que="Cambio a la <b>Ruta "+s.rutaDestino+"</b>";
+      extra='<p style="margin:6px 0">Cupo actual de esa ruta en la tarde: <b>'+c.ocupados+'/'+c.cupo+'</b> · '+
+        (c.libres>0 ? c.libres+" lugar(es) libre(s)" : '<span style="color:#b02525">SIN LUGARES</span>')+'</p>';
+    } else {
+      que="Cambio de lugar de entrega";
+      extra='<p style="margin:6px 0">Nueva dirección: <b>'+(s.dir||"")+'</b>'+(s.ref?" ("+s.ref+")":"")+'</p>';
+    }
+    d.innerHTML='<h3 style="margin:0">'+s.alumnoNombre+'</h3>'+
+      '<p style="margin:6px 0">'+que+'</p>'+extra+
+      '<p class="chico">Pidió: '+(s.contacto||"—")+' · '+(s.tel||"")+' · '+hhmmDe(s.ts)+(s.motivo?' · Motivo: '+s.motivo:'')+'</p>';
+
+    var ba=document.createElement("button");
+    ba.className="b verde"; ba.textContent="APROBAR Y APLICAR";
+    ba.addEventListener("click", function(){ aprobarSolicitud(s); });
+    var br=document.createElement("button");
+    br.className="b rojo"; br.textContent="Rechazar";
+    br.addEventListener("click", function(){
+      var m=prompt("Motivo del rechazo (lo verá el papá en su app):","");
+      if(m===null) return;
+      firebase.firestore().collection("solicitudes").doc(s.id)
+        .set({estado:"rechazada", respuesta:m, resueltaPor:(usuarioAdmin?usuarioAdmin.email:""), resueltaTs:Date.now()},{merge:true});
+    });
+    d.appendChild(ba); d.appendChild(br);
+    cso.appendChild(d);
+  });
+
+  /* ---- bajas ---- */
+  var cb=$("listaBajas"); cb.innerHTML="";
+  if(!BAJAS.length) cb.innerHTML='<p class="ayuda">Ningún papá ha avisado hoy.</p>';
+  BAJAS.sort(function(a,b){ return b.ts-a.ts; }).forEach(function(b){
+    var d=document.createElement("div");
+    d.style.cssText="padding:10px 0;border-bottom:1px solid var(--linea)";
+    d.innerHTML='<b>'+b.alumnoNombre+'</b> — hoy no regresa · '+b.motivo+
+      '<br><span class="chico">Avisó '+(b.contacto||"")+' ('+(b.tel||"")+') a las '+hhmmDe(b.ts)+'</span>';
+    cb.appendChild(d);
+  });
+
+  var n=SOLICITUDES.length+pendientes.length;
+  var badge=$("pendCount");
+  badge.textContent=n;
+  badge.classList.toggle("oculto", n===0);
+}
+
+function aprobarSolicitud(s){
+  var al=null;
+  D.alumnos.forEach(function(a){ if(a.id===s.alumnoId) al=a; });
+  if(!al){ alert("Ese alumno ya no está en el padrón."); return; }
+
+  if(s.tipo==="ruta"){
+    var c=cupoRuta(s.rutaDestino,"pm");
+    if(c.libres<=0){
+      alert("La Ruta "+s.rutaDestino+" ya no tiene lugares ("+c.ocupados+"/"+c.cupo+").\n\nAlguien más ocupó el lugar. Recházala con ese motivo.");
+      return;
+    }
+    var permanente=confirm("¿El cambio es permanente?\n\nAceptar = permanente (cambia su ruta de la tarde).\n" +
+                           "Cancelar = solo por hoy (queda como cambio del día).");
+    if(permanente){
+      al.rutaPM=s.rutaDestino;
+      al.ordenPM=99;
+    } else {
+      if(!D.excepciones[hoyISO()]) D.excepciones[hoyISO()]=[];
+      D.excepciones[hoyISO()]=D.excepciones[hoyISO()].filter(function(x){ return x.alumno!==al.id; });
+      D.excepciones[hoyISO()].push({alumno:al.id, tipo:"cambia_ruta", ruta:s.rutaDestino, turno:"pm",
+        motivo:"Solicitud aprobada", aviso:(s.contacto||"")+" por la app", registrado:new Date().toISOString()});
+    }
+  } else {
+    var permanente2=confirm("¿El cambio de dirección es permanente?\n\nAceptar = permanente.\nCancelar = solo por hoy.");
+    if(permanente2){
+      al.dirEnt=s.dir;
+      if(s.ref) al.ref=s.ref;
+      al.coordEnt="";
+    } else {
+      if(!D.excepciones[hoyISO()]) D.excepciones[hoyISO()]=[];
+      D.excepciones[hoyISO()]=D.excepciones[hoyISO()].filter(function(x){ return x.alumno!==al.id; });
+      D.excepciones[hoyISO()].push({alumno:al.id, tipo:"cambia_parada", dir:s.dir,
+        motivo:"Solicitud aprobada", aviso:(s.contacto||"")+" por la app", registrado:new Date().toISOString()});
+    }
+  }
+  guardar();
+  firebase.firestore().collection("solicitudes").doc(s.id).set({
+    estado:"aprobada", respuesta:"Aplicada", resueltaPor:(usuarioAdmin?usuarioAdmin.email:""), resueltaTs:Date.now()
+  },{merge:true});
+  pintarTabla(); pintarExcep(); pintarMapa();
+  alert("Aplicada. La auxiliar la recibe en su celular en segundos.");
 }
 
 /* ======================= EXCEPCIONES ======================= */
@@ -1266,7 +1699,7 @@ $("fileCsv").addEventListener("change", function(ev){
       });
       nuevos++;
     }
-    guardar(); pintarTabla(); pintarMapa();
+    guardar(); pintarTabla(); pintarMapa(); pintarFamilias();
     var msg = '<div class="aviso ok">Se agregaron ' + nuevos + ' alumnos.</div>';
     if(malos.length) msg += '<div class="aviso">Revisa estos, se cargaron pero con datos raros:<br>' + malos.join("<br>") + '</div>';
     $("csvMsg").innerHTML = msg;
@@ -1281,6 +1714,7 @@ function paquete(){
     actualizado: new Date().toISOString(),
     colegio: D.colegio,
     rutas: D.rutas,
+    familias: D.familias || {},
     alumnos: D.alumnos,
     excepciones: D.excepciones
   };
@@ -1305,6 +1739,7 @@ $("fileJson").addEventListener("change", function(ev){
       D.rutas = p.rutas || D.rutas;
       D.alumnos = p.alumnos || [];
       D.excepciones = p.excepciones || {};
+      D.familias = p.familias || D.familias || {};
       guardar(); pintarTodo();
       $("jsonMsg").innerHTML = '<div class="aviso ok">Respaldo restaurado: ' + D.alumnos.length + ' alumnos.</div>';
     }catch(e){
@@ -1427,7 +1862,7 @@ $("mpRuta").addEventListener("change", pintarMapa);
 /* ======================= ARRANQUE ======================= */
 function pintarTodo(){
   pintarDias(); llenarSelectRutas(); pintarRutas();
-  pintarTabla(); pintarExcep(); pintarMapa(); refrescarEtiquetas(); pintarMotivos();
+  pintarTabla(); pintarExcep(); pintarMapa(); pintarFamilias(); refrescarEtiquetas(); pintarMotivos();
 }
 var panelListo = false;
 function arrancarPanel(){

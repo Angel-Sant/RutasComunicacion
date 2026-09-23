@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f5fa9">
+<title>Transporte Bilbao — Papás</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+:root{--azul:#1f5fa9;--tinta:#1c2430;--suave:#5d6875;--linea:#dde3ea;--ok:#1d7a4c;--no:#b02525;--amb:#b5730c;--fondo:#f2f5f8;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--fondo);
+     color:var(--tinta);font-size:17px;line-height:1.4;padding-bottom:40px;}
+.oculto{display:none !important;}
+header{background:var(--azul);color:#fff;padding:14px 16px;position:sticky;top:0;z-index:10;}
+header .t{font-size:14px;opacity:.85;}
+header .r{font-size:21px;font-weight:700;}
+.wrap{padding:16px;max-width:520px;margin:0 auto;}
+.tarjeta{background:#fff;border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08);}
+h2{font-size:20px;margin:0 0 10px;}
+label{display:block;font-size:15px;color:var(--suave);margin-bottom:6px;}
+input{width:100%;padding:16px;font-size:20px;border:2px solid var(--linea);border-radius:12px;font-family:inherit;
+      text-transform:uppercase;letter-spacing:1px;}
+input:focus{outline:none;border-color:var(--azul);}
+button{width:100%;padding:17px;font-size:19px;font-weight:700;border:none;border-radius:14px;color:#fff;
+       background:var(--azul);margin-top:12px;font-family:inherit;cursor:pointer;}
+button.gris{background:#7b8794;} button.chico{padding:12px;font-size:15px;font-weight:600;}
+button.linea{background:#fff;color:var(--azul);border:2px solid var(--azul);}
+.meta{font-size:15px;color:var(--suave);margin:4px 0;}
+.hijo{border:2px solid var(--linea);border-radius:14px;padding:16px;margin-bottom:14px;background:#fff;}
+.hijo .nm{font-size:22px;font-weight:800;line-height:1.15;}
+.hijo .gr{font-size:14px;color:var(--suave);margin-bottom:10px;}
+.hijo.si{border-color:var(--ok);}
+.hijo.no{border-color:var(--no);}
+.estado{font-size:19px;font-weight:700;margin:8px 0 4px;}
+.estado.si{color:var(--ok);} .estado.no{color:var(--no);} .estado.esp{color:var(--amb);}
+.linea-dato{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--linea);font-size:15px;}
+.linea-dato:last-child{border:none;}
+.linea-dato span:first-child{color:var(--suave);}
+.chip{display:inline-block;background:#eaf1f9;color:var(--azul);font-size:13px;font-weight:600;padding:3px 9px;border-radius:11px;margin-bottom:8px;}
+.aviso{background:#fff8e8;border-left:4px solid var(--amb);padding:12px 14px;border-radius:0 10px 10px 0;font-size:15px;margin:12px 0;}
+.aviso.ok{background:#f2fbf6;border-left-color:var(--ok);}
+.pie{text-align:center;font-size:13px;color:var(--suave);padding:18px;}
+.err{color:var(--no);font-weight:600;margin-top:10px;}
+.acc{display:flex;gap:8px;margin-top:12px;}
+.acc button{margin-top:0;padding:13px 6px;font-size:15px;border-radius:10px;}
+.opc{display:block;width:100%;text-align:left;background:#eef2f7;color:var(--tinta);font-weight:600;
+     padding:14px;border-radius:10px;margin-top:8px;font-size:16px;border:2px solid transparent;cursor:pointer;font-family:inherit;}
+.opc.sel{border-color:var(--azul);background:#fff;}
+.badge{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:11px;margin-top:8px;}
+.badge.pend{background:#fdf0dc;color:var(--amb);}
+.badge.baja{background:#fae3e3;color:var(--no);}
+.badge.ok{background:#dff3e8;color:var(--ok);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="t" id="hdSub">Colegio Bilbao</div>
+  <div class="r" id="hdTit">Transporte</div>
+</header>
+
+<section id="pCarga" class="wrap">
+  <div class="tarjeta"><h2>Un momento…</h2><p class="meta" id="cargaMsg">Conectando.</p></div>
+</section>
+
+<section id="pCodigo" class="wrap oculto">
+  <div class="tarjeta">
+    <h2>Escriba su código</h2>
+    <label>Es el que le envió el colegio, por ejemplo BIL-4K7M-92XP</label>
+    <input id="codigo" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="BIL-....-....">
+    <button id="btnEntrar">ENTRAR</button>
+    <p class="err oculto" id="errCod"></p>
+    <p class="meta" style="font-size:13px;margin-top:14px">Solo se escribe una vez. Después su celular lo recuerda.</p>
+  </div>
+</section>
+
+<section id="pAccion" class="wrap oculto">
+  <div class="tarjeta">
+    <h2 id="acTitulo">Acción</h2>
+    <p class="meta" id="acAlumno"></p>
+    <div id="acCuerpo"></div>
+    <button class="gris chico" id="acCancelar">Cancelar</button>
+  </div>
+</section>
+
+<section id="pPanel" class="wrap oculto">
+  <div id="avisoDia"></div>
+  <div id="hijos"></div>
+  <div id="acciones"></div>
+  <div class="tarjeta">
+    <p class="meta" id="pieInfo"></p>
+    <button class="linea chico" id="btnActualizar">ACTUALIZAR</button>
+    <button class="gris chico" id="btnSalir">Salir de esta cuenta</button>
+  </div>
+  <div class="pie">Los horarios los registra la auxiliar durante el recorrido.</div>
+</section>
+
+<script>
+var FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAB17etP2RcTdgUGN0SPVxASsdKqomS2zU",
+  authDomain: "rutas-bilbao.firebaseapp.com",
+  databaseURL: "https://rutas-bilbao-default-rtdb.firebaseio.com",
+  projectId: "rutas-bilbao",
+  storageBucket: "rutas-bilbao.firebasestorage.app",
+  messagingSenderId: "1024214893395",
+  appId: "1:1024214893395:web:8873b37286630b4c2fd7a6"
+};
+
+var db=null, codigoActual=null, desuscribir=null;
+
+function $(id){ return document.getElementById(id); }
+function ver(id){
+  ["pCarga","pCodigo","pAccion","pPanel"].forEach(function(p){ $(p).classList.add("oculto"); });
+  $(id).classList.remove("oculto"); window.scrollTo(0,0);
+}
+function hoy(){ var d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function hora(ts){
+  if(!ts) return "—";
+  var d=new Date(ts),h=d.getHours(),m=String(d.getMinutes()).padStart(2,"0");
+  var ap=h<12?"a.m.":"p.m.",h12=h%12; if(h12===0)h12=12;
+  return h12+":"+m+" "+ap;
+}
+function minutos(a,b){ return Math.max(0, Math.round((b-a)/60000)); }
+
+
+/* ================= ACCIONES DE LOS PAPÁS ================= */
+var DATOS_COLEGIO=null, MIS_ALUMNOS=[], MI_CONTACTO=null, WHATS_COORD="5562550283";
+var LIMITE_TARDE="13:30";   /* después de esta hora ya no se puede avisar por la app */
+var MOTIVOS_BAJA=["Lo recojo yo","Enfermo","Cita médica","Actividad extraescolar","Se va con un familiar","Otro"];
+
+function antesDelLimite(){
+  var p=LIMITE_TARDE.split(":"), d=new Date();
+  return (d.getHours()*60+d.getMinutes()) < (parseInt(p[0],10)*60+parseInt(p[1],10));
+}
+function verificado(){
+  try{ return localStorage.getItem("tb_verificado_"+codigoActual)==="1"; }catch(e){ return false; }
+}
+function pedirVerificacion(despues){
+  var cont=$("acCuerpo");
+  cont.innerHTML='<label style="margin-top:10px">Por seguridad, escriba los últimos 4 dígitos del teléfono donde recibió este código</label>'+
+    '<input id="acDig" inputmode="numeric" maxlength="4" placeholder="0000" style="letter-spacing:6px;text-align:center">'+
+    '<p class="err oculto" id="acErrDig">No coinciden. Si cambió de teléfono, pida un código nuevo al colegio.</p>';
+  var b=document.createElement("button");
+  b.textContent="CONTINUAR";
+  b.addEventListener("click", function(){
+    var d=($("acDig").value||"").replace(/\D/g,"");
+    var tel=(MI_CONTACTO&&MI_CONTACTO.tel)||"";
+    if(d.length===4 && tel.slice(-4)===d){
+      try{ localStorage.setItem("tb_verificado_"+codigoActual,"1"); }catch(e){}
+      despues();
+    } else {
+      $("acErrDig").classList.remove("oculto");
+    }
+  });
+  cont.appendChild(b);
+}
+
+/* ---- hoy no sube (solo tarde) ---- */
+function accionNoSube(al){
+  $("acTitulo").textContent="Hoy no regresa en el transporte";
+  $("acAlumno").textContent=al.nombre+" · solo aplica a la salida del colegio";
+  ver("pAccion");
+  function form(){
+    var cont=$("acCuerpo");
+    cont.innerHTML='<p class="meta">¿Por qué motivo?</p>';
+    var elegido="";
+    MOTIVOS_BAJA.forEach(function(m){
+      var b=document.createElement("button");
+      b.className="opc"; b.textContent=m;
+      b.addEventListener("click", function(){
+        Array.prototype.forEach.call(cont.querySelectorAll(".opc"), function(x){ x.classList.remove("sel"); });
+        b.classList.add("sel"); elegido=m;
+      });
+      cont.appendChild(b);
+    });
+    var conf=document.createElement("button");
+    conf.style.marginTop="18px"; conf.style.background="var(--no)";
+    conf.textContent="CONFIRMAR QUE HOY NO REGRESA";
+    conf.addEventListener("click", function(){
+      if(!elegido){ alert("Elija un motivo."); return; }
+      conf.disabled=true; conf.textContent="Registrando…";
+      var id=hoy()+"_"+al.id;
+      db.collection("bajas").doc(id).set({
+        fecha:hoy(), turno:"tarde", alumnoId:al.id, alumnoNombre:al.nombre,
+        codigo:codigoActual, contacto:(MI_CONTACTO&&MI_CONTACTO.nombre)||"", 
+        tel:(MI_CONTACTO&&MI_CONTACTO.tel)||"", motivo:elegido, ts:Date.now()
+      }).then(function(){
+        alert("Registrado a las "+hora(Date.now())+".\n\nLa auxiliar de la ruta ya lo ve en su lista.");
+        ver("pPanel"); cargarExtras();
+      }).catch(function(){
+        conf.disabled=false; conf.textContent="CONFIRMAR QUE HOY NO REGRESA";
+        alert("No se pudo registrar: revise su internet.\n\nSi ya es tarde, por favor avísenos por WhatsApp.");
+        abrirWhats("No pude registrar en la app que "+al.nombre+" hoy no regresa en el transporte.");
+      });
+    });
+    cont.appendChild(conf);
+  }
+  if(verificado()) form(); else pedirVerificacion(form);
+}
+
+function deshacerBaja(al){
+  if(!confirm(al.nombre+" sí regresará hoy en el transporte. ¿Confirmar?")) return;
+  db.collection("bajas").doc(hoy()+"_"+al.id).delete().catch(function(){
+    /* los papás no pueden borrar: se marca como cancelada */
+    return db.collection("bajas").doc(hoy()+"_"+al.id).set({cancelada:true, ts:Date.now()},{merge:true});
+  }).then(function(){ cargarExtras(); });
+}
+
+/* ---- solicitudes ---- */
+function abrirWhats(texto){
+  window.open("https://wa.me/521"+WHATS_COORD+"?text="+encodeURIComponent(texto),"_blank");
+}
+function cupoDe(rutaNum, turno){
+  if(!DATOS_COLEGIO) return null;
+  var r=DATOS_COLEGIO.rutas[rutaNum];
+  if(!r) return null;
+  var n=0;
+  DATOS_COLEGIO.alumnos.forEach(function(a){
+    if(turno==="am"){ if(a.am && (a.rutaAM||a.ruta)===rutaNum) n++; }
+    else { if(a.pm && (a.rutaPM||a.ruta)===rutaNum) n++; }
+  });
+  return { ocupados:n, cupo:r.cupo||0, libres:(r.cupo||0)-n };
+}
+
+function accionCambio(al){
+  $("acTitulo").textContent="Pedir un cambio";
+  $("acAlumno").textContent=al.nombre;
+  ver("pAccion");
+  var cont=$("acCuerpo");
+  cont.innerHTML="";
+  [["ruta","Cambiar de ruta"],["entrega","Cambiar el lugar de entrega"]].forEach(function(o){
+    var b=document.createElement("button");
+    b.className="opc"; b.textContent=o[1];
+    b.addEventListener("click", function(){ o[0]==="ruta" ? formRuta(al) : formEntrega(al); });
+    cont.appendChild(b);
+  });
+  var nota=document.createElement("p");
+  nota.className="meta"; nota.style.marginTop="14px";
+  nota.textContent="Los cambios de ruta y de dirección los revisa y aprueba coordinación antes de aplicarse.";
+  cont.appendChild(nota);
+}
+
+function formRuta(al){
+  var cont=$("acCuerpo");
+  cont.innerHTML='<p class="meta">¿A qué ruta?</p>';
+  var elegida="";
+  Object.keys(DATOS_COLEGIO.rutas).sort().forEach(function(k){
+    var c=cupoDe(k,"pm");
+    var b=document.createElement("button");
+    b.className="opc";
+    b.innerHTML="<b>Ruta "+k+"</b><br><span style='font-size:13px;color:var(--suave)'>"+
+      (c.libres>0 ? c.libres+" lugar(es) disponible(s)" : "Sin lugares disponibles")+"</span>";
+    if(c.libres<=0){
+      b.style.opacity=".55";
+      b.addEventListener("click", function(){
+        alert("La Ruta "+k+" no tiene lugares disponibles.\n\nLe abrimos WhatsApp para que nos contacte directamente.");
+        abrirWhats("Buen día. Quisiera cambiar a "+al.nombre+" a la Ruta "+k+", pero la app indica que no hay lugares. ¿Me pueden apoyar?");
+      });
+    } else {
+      b.addEventListener("click", function(){
+        Array.prototype.forEach.call(cont.querySelectorAll(".opc"), function(x){ x.classList.remove("sel"); });
+        b.classList.add("sel"); elegida=k;
+      });
+    }
+    cont.appendChild(b);
+  });
+  var mot=document.createElement("input");
+  mot.id="acMotivo"; mot.placeholder="Motivo (opcional)";
+  mot.style.cssText="text-transform:none;letter-spacing:0;margin-top:14px;font-size:16px;padding:13px";
+  cont.appendChild(mot);
+  var env=document.createElement("button");
+  env.textContent="ENVIAR SOLICITUD";
+  env.addEventListener("click", function(){
+    if(!elegida){ alert("Elija una ruta con lugares disponibles."); return; }
+    enviarSolicitud(al,{ tipo:"ruta", rutaDestino:elegida, motivo:mot.value.trim() }, env);
+  });
+  cont.appendChild(env);
+}
+
+function formEntrega(al){
+  var cont=$("acCuerpo");
+  cont.innerHTML='<p class="meta">Escriba la dirección donde debe entregarse. Coordinación la revisa antes de aplicarla.</p>'+
+    '<input id="acDir" placeholder="Calle, número y colonia" style="text-transform:none;letter-spacing:0;font-size:16px;padding:13px">'+
+    '<input id="acRef" placeholder="Referencia (portón, color de casa)" style="text-transform:none;letter-spacing:0;font-size:16px;padding:13px;margin-top:10px">'+
+    '<p class="meta" style="font-size:13px;margin-top:10px">¿Es solo por un día o permanente? Indíquelo en el motivo.</p>'+
+    '<input id="acMotivo" placeholder="Motivo" style="text-transform:none;letter-spacing:0;font-size:16px;padding:13px;margin-top:6px">';
+  var env=document.createElement("button");
+  env.textContent="ENVIAR SOLICITUD";
+  env.addEventListener("click", function(){
+    var d=$("acDir").value.trim();
+    if(d.length<8){ alert("Escriba la dirección completa."); return; }
+    enviarSolicitud(al,{ tipo:"entrega", dir:d, ref:$("acRef").value.trim(), motivo:$("acMotivo").value.trim() }, env);
+  });
+  $("acCuerpo").appendChild(env);
+}
+
+function enviarSolicitud(al, datos, boton){
+  function mandar(){
+    boton.disabled=true; boton.textContent="Enviando…";
+    var doc=db.collection("solicitudes").doc();
+    var reg=Object.assign({
+      fecha:hoy(), alumnoId:al.id, alumnoNombre:al.nombre, codigo:codigoActual,
+      contacto:(MI_CONTACTO&&MI_CONTACTO.nombre)||"", tel:(MI_CONTACTO&&MI_CONTACTO.tel)||"",
+      estado:"pendiente", ts:Date.now()
+    }, datos);
+    doc.set(reg).then(function(){
+      try{
+        var mias=JSON.parse(localStorage.getItem("tb_solicitudes")||"[]");
+        mias.push(doc.id);
+        localStorage.setItem("tb_solicitudes", JSON.stringify(mias.slice(-20)));
+      }catch(e){}
+      alert("Solicitud enviada a las "+hora(Date.now())+".\n\nCoordinación la revisará y usted verá aquí la respuesta. Mientras tanto, el servicio sigue como está hoy.");
+      ver("pPanel"); cargarExtras();
+    }).catch(function(){
+      boton.disabled=false; boton.textContent="ENVIAR SOLICITUD";
+      alert("No se pudo enviar. Le abrimos WhatsApp.");
+      abrirWhats("Buen día. Quisiera solicitar un cambio para "+al.nombre+".");
+    });
+  }
+  if(verificado()) mandar(); else pedirVerificacion(mandar);
+}
+$("acCancelar").addEventListener("click", function(){ ver("pPanel"); });
+
+/* ---- lee bajas y solicitudes propias para pintarlas ---- */
+var BAJAS_HOY={}, MIS_SOLICITUDES=[];
+function cargarExtras(){
+  BAJAS_HOY={};
+  MIS_ALUMNOS.forEach(function(al){
+    db.collection("bajas").doc(hoy()+"_"+al.id).get().then(function(s){
+      if(s.exists && !s.data().cancelada) BAJAS_HOY[al.id]=s.data();
+      else delete BAJAS_HOY[al.id];
+      pintarAcciones();
+    }).catch(function(){});
+  });
+  var ids=[];
+  try{ ids=JSON.parse(localStorage.getItem("tb_solicitudes")||"[]"); }catch(e){}
+  MIS_SOLICITUDES=[];
+  ids.forEach(function(id){
+    db.collection("solicitudes").doc(id).get().then(function(s){
+      if(s.exists && s.data().codigo===codigoActual){ MIS_SOLICITUDES.push(Object.assign({id:id}, s.data())); pintarAcciones(); }
+    }).catch(function(){});
+  });
+}
+
+/* ---------- arranque ---------- */
+firebase.initializeApp(FIREBASE_CONFIG);
+db=firebase.firestore();
+db.enablePersistence({synchronizeTabs:true}).catch(function(){});
+
+firebase.auth().signInAnonymously().then(function(){
+  var guardado=null;
+  try{ guardado=localStorage.getItem("tb_codigo_familia"); }catch(e){}
+  if(guardado) entrar(guardado, true);
+  else ver("pCodigo");
+}).catch(function(){
+  $("cargaMsg").innerHTML="No se pudo conectar.<br>Revise su internet y vuelva a abrir la app.";
+});
+
+$("btnEntrar").addEventListener("click", function(){
+  var c=$("codigo").value.trim().toUpperCase().replace(/\s+/g,"");
+  if(c && c.indexOf("BIL")!==0) c="BIL-"+c;
+  if(c.length<8){ $("errCod").textContent="El código está incompleto."; $("errCod").classList.remove("oculto"); return; }
+  entrar(c, false);
+});
+$("codigo").addEventListener("keydown", function(e){ if(e.key==="Enter") $("btnEntrar").click(); });
+
+function entrar(cod, silencioso){
+  $("errCod").classList.add("oculto");
+  $("cargaMsg").textContent="Buscando su información…";
+  ver("pCarga");
+  codigoActual=cod;
+  escuchar(cod, silencioso);
+}
+
+function cargarColegio(cod){
+  return db.collection("transporte").doc("datos").get().then(function(s){
+    if(!s.exists) return;
+    DATOS_COLEGIO=s.data();
+    var tel=null;
+    Object.keys(DATOS_COLEGIO.familias||{}).forEach(function(t){
+      if(DATOS_COLEGIO.familias[t].codigo===cod) tel=t;
+    });
+    if(!tel) return;
+    MIS_ALUMNOS=DATOS_COLEGIO.alumnos.filter(function(a){
+      return (a.contactos||[{tel:a.tel}]).some(function(c){ return (c.tel||"").replace(/\D/g,"")===tel; });
+    });
+    MIS_ALUMNOS.forEach(function(a){
+      (a.contactos||[]).forEach(function(c){ if((c.tel||"").replace(/\D/g,"")===tel) MI_CONTACTO=c; });
+    });
+    if(DATOS_COLEGIO.colegio && DATOS_COLEGIO.colegio.whatsapp) WHATS_COORD=DATOS_COLEGIO.colegio.whatsapp;
+  }).catch(function(){});
+}
+
+function escuchar(cod, silencioso){
+  if(desuscribir) desuscribir();
+  var primera=true;
+  desuscribir=db.collection("familias").doc(cod).collection("dias")
+    .where("fecha","==",hoy())
+    .onSnapshot(function(qs){
+      var docs=[];
+      qs.forEach(function(d){ docs.push(d.data()); });
+      if(primera){
+        primera=false;
+        try{ localStorage.setItem("tb_codigo_familia", cod); }catch(e){}
+        ver("pPanel");
+        cargarColegio(cod).then(function(){ pintarAcciones(); cargarExtras(); });
+      }
+      pintar(docs);
+    }, function(){
+      if(silencioso){ ver("pPanel"); pintar([]); }
+      else {
+        ver("pCodigo");
+        $("errCod").textContent="No pudimos validar ese código. Revíselo o pida uno nuevo al colegio.";
+        $("errCod").classList.remove("oculto");
+      }
+    });
+}
+
+
+function pintarAcciones(){
+  var cont=$("acciones");
+  if(!cont) return;
+  cont.innerHTML="";
+  if(!MIS_ALUMNOS.length) return;
+
+  MIS_ALUMNOS.forEach(function(al){
+    var d=document.createElement("div");
+    d.className="tarjeta";
+    var baja=BAJAS_HOY[al.id];
+    var sol=MIS_SOLICITUDES.filter(function(s){ return s.alumnoId===al.id; }).sort(function(a,b){ return b.ts-a.ts; })[0];
+
+    var html='<h2 style="font-size:18px">'+al.nombre+'</h2>';
+    if(baja) html+='<span class="badge baja">Hoy no regresa · '+baja.motivo+'</span>';
+    if(sol){
+      var t=(sol.tipo==="ruta") ? ("cambio a la Ruta "+sol.rutaDestino) : "cambio de lugar de entrega";
+      if(sol.estado==="pendiente") html+='<br><span class="badge pend">Solicitud de '+t+' · en revisión</span>';
+      else if(sol.estado==="aprobada") html+='<br><span class="badge ok">Solicitud aprobada: '+t+'</span>';
+      else if(sol.estado==="rechazada") html+='<br><span class="badge baja">Solicitud no aprobada'+(sol.respuesta?": "+sol.respuesta:"")+'</span>';
+    }
+    d.innerHTML=html;
+
+    var caja=document.createElement("div");
+    caja.className="acc";
+    if(al.pm!==false){
+      var b1=document.createElement("button");
+      if(baja){
+        b1.className="linea"; b1.textContent="Sí regresa hoy";
+        b1.addEventListener("click", function(){ deshacerBaja(al); });
+      } else if(!antesDelLimite()){
+        b1.className="gris"; b1.textContent="Ya pasó la hora";
+        b1.addEventListener("click", function(){
+          alert("Después de las "+LIMITE_TARDE+" ya no es posible avisar por la app.\n\nLe abrimos WhatsApp para avisar a coordinación.");
+          abrirWhats("Buen día. Aviso que "+al.nombre+" hoy no regresa en el transporte.");
+        });
+      } else {
+        b1.style.background="var(--no)"; b1.textContent="Hoy no regresa";
+        b1.addEventListener("click", function(){ accionNoSube(al); });
+      }
+      caja.appendChild(b1);
+    }
+    var b2=document.createElement("button");
+    b2.className="linea"; b2.textContent="Pedir un cambio";
+    b2.addEventListener("click", function(){ accionCambio(al); });
+    caja.appendChild(b2);
+    d.appendChild(caja);
+
+    if(al.pm!==false && antesDelLimite() && !baja){
+      var nota=document.createElement("p");
+      nota.className="meta"; nota.style.cssText="font-size:13px;margin-top:10px";
+      nota.textContent="El aviso de no regresar aplica solo a la salida del colegio, hasta las "+LIMITE_TARDE+".";
+      d.appendChild(nota);
+    }
+    cont.appendChild(d);
+  });
+}
+
+function pintar(docs){
+  var cont=$("hijos"); cont.innerHTML="";
+  $("hdTit").textContent="Transporte";
+  $("hdSub").textContent="Colegio Bilbao";
+
+  if(!docs.length){
+    $("avisoDia").innerHTML='<div class="aviso">Todavía no hay movimiento hoy.<br>' +
+      'Aquí aparecerá el recorrido de sus hijos en cuanto la ruta comience.</div>';
+    $("pieInfo").textContent="Código "+codigoActual;
+    return;
+  }
+  $("avisoDia").innerHTML="";
+
+  /* un documento por alumno y turno */
+  var porAlumno={};
+  docs.forEach(function(d){
+    var k=d.alumno.id+"_"+d.turno;
+    if(!porAlumno[k] || d.actualizado>porAlumno[k].actualizado) porAlumno[k]=d;
+  });
+
+  Object.keys(porAlumno).sort().forEach(function(k){
+    var d=porAlumno[k], a=d.alumno, esAM=(d.turno==="manana");
+    var div=document.createElement("div");
+    div.className="hijo"+(a.estado==="si"?" si":(a.estado==="no"?" no":""));
+
+    var html='<span class="chip">Ruta '+d.ruta+' · '+(esAM?"Camino al colegio":"Camino a casa")+'</span>'+
+             '<div class="nm">'+a.nombre+'</div>'+
+             '<div class="gr">Parada '+a.parada+' de '+d.totalParadas+(a.punto?" · "+a.punto:"")+'</div>';
+
+    if(a.estado==="si"){
+      html+='<div class="estado si">'+(esAM?"Abordó a las "+hora(a.hora):"Entregado a las "+hora(a.hora))+'</div>';
+    } else if(a.estado==="no"){
+      html+='<div class="estado no">'+(esAM?"No abordó":"No se entregó")+(a.motivoNo?" · "+a.motivoNo:"")+'</div>';
+    } else {
+      html+='<div class="estado esp">'+(esAM?"Aún no aborda":"Aún no se entrega")+'</div>';
+    }
+
+    html+='<div style="margin-top:10px">';
+    if(d.inicio) html+='<div class="linea-dato"><span>'+(esAM?"La ruta salió":"Salió del colegio")+'</span><span>'+hora(d.inicio)+'</span></div>';
+    if(a.estado==="si"&&a.hora) html+='<div class="linea-dato"><span>'+(esAM?"Abordó":"Bajó")+'</span><span>'+hora(a.hora)+'</span></div>';
+    if(d.fin){
+      html+='<div class="linea-dato"><span>'+(esAM?"Llegó al colegio":"Terminó el recorrido")+'</span><span>'+hora(d.fin)+'</span></div>';
+      if(a.estado==="si"&&a.hora&&esAM)
+        html+='<div class="linea-dato"><span>Tiempo a bordo</span><span>'+minutos(a.hora,d.fin)+' min</span></div>';
+    } else {
+      html+='<div class="linea-dato"><span>Va en la parada</span><span>'+d.paradaActual+' de '+d.totalParadas+'</span></div>';
+    }
+    html+='</div>';
+
+    if(d.fin&&d.comentario) html+='<div class="aviso ok" style="margin-top:12px"><b>Comentario de la auxiliar:</b><br>'+d.comentario+'</div>';
+    div.innerHTML=html;
+    cont.appendChild(div);
+  });
+
+  var ult=0;
+  docs.forEach(function(d){ if(d.actualizado>ult) ult=d.actualizado; });
+  $("pieInfo").textContent="Última actualización: "+hora(ult)+" · código "+codigoActual;
+}
+
+$("btnActualizar").addEventListener("click", function(){ if(codigoActual) escuchar(codigoActual,true); });
+$("btnSalir").addEventListener("click", function(){
+  if(!confirm("Se borrará su código de este celular y tendrá que escribirlo otra vez. ¿Continuar?")) return;
+  try{ localStorage.removeItem("tb_codigo_familia"); }catch(e){}
+  location.reload();
+});
+</script>
+</body>
+</html>
