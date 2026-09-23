@@ -128,7 +128,12 @@ function minutos(a,b){ return Math.max(0, Math.round((b-a)/60000)); }
 
 
 /* ================= ACCIONES DE LOS PAPÁS ================= */
-var DATOS_COLEGIO=null, MIS_ALUMNOS=[], MI_CONTACTO=null, WHATS_COORD="5562550283";
+var DATOS_COLEGIO=null, MIS_ALUMNOS=[], MI_CONTACTO=null;
+var WHATS_COORD=[
+  { tel:"5614307659", nombre:"Coordinación de transporte" },
+  { tel:"5562550283", nombre:"Coordinación de transporte" }
+];
+function telBonito(t){ return t.slice(0,2)+" "+t.slice(2,6)+" "+t.slice(6); }
 var LIMITE_TARDE="13:30";   /* después de esta hora ya no se puede avisar por la app */
 var MOTIVOS_BAJA=["Lo recojo yo","Enfermo","Cita médica","Actividad extraescolar","Se va con un familiar","Otro"];
 
@@ -212,7 +217,33 @@ function deshacerBaja(al){
 
 /* ---- solicitudes ---- */
 function abrirWhats(texto){
-  window.open("https://wa.me/521"+WHATS_COORD+"?text="+encodeURIComponent(texto),"_blank");
+  /* dos números: el papá elige a cuál escribir */
+  var vieja=document.getElementById("capaWhats");
+  if(vieja) vieja.remove();
+  var capa=document.createElement("div");
+  capa.id="capaWhats";
+  capa.style.cssText="position:fixed;inset:0;background:rgba(28,36,48,.6);z-index:200;display:flex;"+
+    "align-items:flex-end;justify-content:center;padding:16px";
+  var caja=document.createElement("div");
+  caja.style.cssText="background:#fff;border-radius:16px;padding:20px;width:100%;max-width:460px";
+  caja.innerHTML='<h2 style="margin:0 0 6px">¿A quién le escribimos?</h2>'+
+    '<p class="meta" style="margin-bottom:6px">Elija cualquiera de los dos números de coordinación.</p>';
+  WHATS_COORD.forEach(function(w){
+    var b=document.createElement("button");
+    b.innerHTML=telBonito(w.tel)+'<br><span style="font-size:13px;font-weight:600;opacity:.85">'+w.nombre+'</span>';
+    b.addEventListener("click", function(){
+      window.open("https://wa.me/521"+w.tel+"?text="+encodeURIComponent(texto),"_blank");
+      capa.remove();
+    });
+    caja.appendChild(b);
+  });
+  var bc=document.createElement("button");
+  bc.className="gris chico"; bc.textContent="Cancelar";
+  bc.addEventListener("click", function(){ capa.remove(); });
+  caja.appendChild(bc);
+  capa.appendChild(caja);
+  capa.addEventListener("click", function(e){ if(e.target===capa) capa.remove(); });
+  document.body.appendChild(capa);
 }
 function cupoDe(rutaNum, turno){
   if(!DATOS_COLEGIO) return null;
@@ -391,7 +422,8 @@ function cargarColegio(cod){
     MIS_ALUMNOS.forEach(function(a){
       (a.contactos||[]).forEach(function(c){ if((c.tel||"").replace(/\D/g,"")===tel) MI_CONTACTO=c; });
     });
-    if(DATOS_COLEGIO.colegio && DATOS_COLEGIO.colegio.whatsapp) WHATS_COORD=DATOS_COLEGIO.colegio.whatsapp;
+    if(DATOS_COLEGIO.colegio && DATOS_COLEGIO.colegio.whatsapps && DATOS_COLEGIO.colegio.whatsapps.length)
+      WHATS_COORD=DATOS_COLEGIO.colegio.whatsapps;
   }).catch(function(){});
 }
 
