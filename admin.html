@@ -79,6 +79,8 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
   <div class="card" style="max-width:420px;width:100%">
     <h2>Panel de coordinación</h2>
     <p class="ayuda">Entra con tu cuenta de coordinación.</p>
+    <div class="aviso">¿Eres auxiliar? Este no es tu acceso. Abre la app de rutas en
+      <a href="index.html">este enlace</a> y entra con tu clave (ruta1, ruta2…).</div>
     <label>Correo</label><input id="lgCorreo" type="email" autocomplete="username">
     <label>Contraseña</label><input id="lgPass" type="password" autocomplete="current-password">
     <button class="b verde" id="lgEntrar" style="width:100%">ENTRAR</button>
@@ -399,6 +401,16 @@ var FIREBASE_CONFIG = {
 };
 var NUBE = null, docDatos = null, tSubida = null, usuarioAdmin = null;
 
+/* Solo estas cuentas pueden abrir el panel. Debe coincidir con la lista
+   coordinacion() de las reglas de Firestore. */
+var COORDINACION = [
+  "miguel.santana.mon@bilbao.edu.mx",
+  "coordinacion@bilbao.edu.mx"
+];
+function esCoordinacion(u){
+  return !!u && COORDINACION.indexOf((u.email||"").trim().toLowerCase()) !== -1;
+}
+
 function hhmm(){ var h=new Date(); return String(h.getHours()).padStart(2,"0")+":"+String(h.getMinutes()).padStart(2,"0"); }
 function estadoNube(txt, clase){
   $("estado").textContent = txt;
@@ -455,6 +467,17 @@ function iniciarNube(){
       usuarioAdmin = null; NUBE = null;
       $("loginAdmin").classList.remove("oculto");
       $("btnSalirAdmin").classList.add("oculto");
+      return;
+    }
+    if(!esCoordinacion(u)){
+      /* una cuenta de auxiliar no abre el panel */
+      $("lgError").innerHTML = "La cuenta <b>" + (u.email||"") + "</b> no es de coordinación.<br>" +
+        "Las claves de ruta se usan en la app de las auxiliares, no aquí.";
+      $("lgError").classList.remove("oculto");
+      $("loginAdmin").classList.remove("oculto");
+      $("btnSalirAdmin").classList.add("oculto");
+      usuarioAdmin = null; NUBE = null;
+      firebase.auth().signOut();
       return;
     }
     usuarioAdmin = u;
