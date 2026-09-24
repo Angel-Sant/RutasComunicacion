@@ -72,6 +72,12 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<link rel="manifest" href="manifest-admin.json">
+<link rel="apple-touch-icon" href="iconos/icono-admin-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Coordinación">
+<meta name="theme-color" content="#2f3b4a">
 </head>
 <body>
 
@@ -1106,8 +1112,25 @@ function mensajeInvitacion(tel){
     "Se escribe una sola vez. Le sugerimos agregarla a la pantalla de inicio de su celular.";
 }
 
+var ACCESOS={}, accesosPedidos=false;
+function cargarAccesos(){
+  if(!NUBE || accesosPedidos) return;
+  accesosPedidos=true;
+  var db=firebase.firestore(), pend=0, listo=false;
+  Object.keys(D.familias||{}).forEach(function(tel){
+    var cod=D.familias[tel].codigo;
+    if(!cod) return;
+    pend++;
+    db.collection("familias").doc(cod).collection("acceso").doc("ultimo").get()
+      .then(function(s){ if(s.exists) ACCESOS[cod]=s.data(); })
+      .catch(function(){})
+      .then(function(){ if(--pend===0 && !listo){ listo=true; pintarFamilias(); } });
+  });
+}
+
 function pintarFamilias(){
   sincronizarFamilias();
+  cargarAccesos();
   var fr = $("famRuta").value, fe = $("famEstado").value;
   var q = $("famBuscar").value.trim().toLowerCase();
   var tb = $("famBody"); tb.innerHTML = "";
@@ -1119,11 +1142,13 @@ function pintarFamilias(){
     var f = D.familias[tel], hijos = hijosDe(tel);
     if(!hijos.length) return;
     total++;
-    if(f.activado) activados++;
+    var acc=ACCESOS[f.codigo];
+    var yaEntro=!!acc || !!f.activado;
+    if(yaEntro) activados++;
     var rutas = rutasDeAlumnos(hijos);
     if(fr && rutas.indexOf(fr) === -1) return;
-    if(fe === "si" && !f.activado) return;
-    if(fe === "no" && f.activado) return;
+    if(fe === "si" && !yaEntro) return;
+    if(fe === "no" && yaEntro) return;
     if(q){
       var texto = (f.nombre + " " + tel + " " + hijos.map(function(a){ return a.nombre; }).join(" ")).toLowerCase();
       if(texto.indexOf(q) === -1) return;
@@ -1152,9 +1177,16 @@ function pintarFamilias(){
     var cc = td(f.codigo);
     cc.style.cssText = "font-family:Consolas,monospace;font-weight:700";
 
-    var ce = td(f.activado ? "Activado" : "Sin activar");
-    ce.style.color = f.activado ? "var(--ok)" : "var(--amb)";
+    var ce = td(yaEntro ? "Ya la usa" : "Nunca ha entrado");
+    ce.style.color = yaEntro ? "var(--ok)" : "var(--amb)";
     ce.style.fontWeight = "600";
+    if(acc && acc.ts){
+      var sub2 = document.createElement("div");
+      sub2.style.cssText = "font-size:12px;color:var(--suave);font-weight:400";
+      var dd = new Date(acc.ts);
+      sub2.textContent = "última vez: " + dd.getDate() + "/" + (dd.getMonth()+1) + " " + hhmmDe(acc.ts);
+      ce.appendChild(sub2);
+    }
 
     var acc = document.createElement("td");
     var bi = document.createElement("button");
@@ -1184,7 +1216,7 @@ function pintarFamilias(){
     tr.appendChild(td0); tb.appendChild(tr);
   }
   $("famResumen").textContent = total + " contactos con hijos en el transporte · " +
-    activados + " ya activaron la app · " + (total - activados) + " por invitar";
+    activados + " ya usan la app · " + (total - activados) + " sin entrar todavía";
 }
 ["famRuta","famEstado","famBuscar"].forEach(function(id){
   $(id).addEventListener(id === "famBuscar" ? "input" : "change", pintarFamilias);
@@ -1875,6 +1907,47 @@ function arrancarPanel(){
   pintarTodo();
 }
 iniciarNube();
+</script>
+
+<script>
+/* ---------- app instalable ---------- */
+if("serviceWorker" in navigator){
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("sw.js").then(function(reg){
+      reg.addEventListener("updatefound", function(){
+        var nuevo = reg.installing;
+        if(!nuevo) return;
+        nuevo.addEventListener("statechange", function(){
+          if(nuevo.state === "installed" && navigator.serviceWorker.controller) avisarVersion(reg);
+        });
+      });
+    }).catch(function(){});
+    var recargando = false;
+    navigator.serviceWorker.addEventListener("controllerchange", function(){
+      if(recargando) return;
+      recargando = true;
+      location.reload();
+    });
+  });
+}
+function avisarVersion(reg){
+  if(document.getElementById("barraVersion")) return;
+  var b = document.createElement("div");
+  b.id = "barraVersion";
+  b.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:300;background:#1c2430;color:#fff;"+
+    "padding:14px 16px;display:flex;gap:12px;align-items:center;justify-content:space-between;font-size:15px";
+  b.innerHTML = "<span>Hay una versión nueva de la app.</span>";
+  var a = document.createElement("button");
+  a.textContent = "ACTUALIZAR";
+  a.style.cssText = "background:#1d7a4c;color:#fff;border:none;border-radius:9px;padding:11px 16px;"+
+    "font-weight:700;font-size:15px;width:auto;margin:0;cursor:pointer";
+  a.onclick = function(){
+    if(reg.waiting) reg.waiting.postMessage("actualizar");
+    else location.reload();
+  };
+  b.appendChild(a);
+  document.body.appendChild(b);
+}
 </script>
 </body>
 </html>

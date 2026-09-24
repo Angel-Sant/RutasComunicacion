@@ -2,8 +2,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Cuentas de coordinación: leen y editan todo.
-    // Para sumar a alguien más, agrega su correo a esta lista.
     function coordinacion() {
       return request.auth != null
         && request.auth.token.email in [
@@ -12,29 +10,71 @@ service cloud.firestore {
            ];
     }
 
-    // Cuentas de las auxiliares: ruta1@bilbao.edu.mx ... ruta6@bilbao.edu.mx
-    // Ningún otro correo del colegio entra por aquí: solo los que empiezan con "ruta" y un número.
     function auxiliar() {
       return request.auth != null
         && request.auth.token.email.matches('ruta[0-9]+@bilbao[.]edu[.]mx');
     }
 
-    // La lista de alumnos, rutas y cambios del día.
-    // Las auxiliares la leen; solo coordinación la modifica.
+    function personal() { return coordinacion() || auxiliar(); }
+
+    // Lista de alumnos, rutas, familias y cambios del día.
     match /transporte/datos {
-      allow read: if coordinacion() || auxiliar();
+      allow read: if personal();
       allow write: if coordinacion();
     }
 
-    // Cada recorrido cerrado. Las auxiliares solo pueden agregar,
-    // nunca leer lo de otras rutas ni borrar.
+    // Recorridos cerrados.
     match /bitacora/{id} {
-      allow create: if auxiliar() || coordinacion();
+      allow create: if personal();
       allow read: if coordinacion();
       allow update, delete: if false;
     }
 
-    // Todo lo demás, cerrado.
+    // Lo que ve cada familia. El código es la llave.
+    match /familias/{codigo}/dias/{id} {
+      allow read: if request.auth != null;
+      allow create, update: if personal();
+      allow delete: if coordinacion();
+    }
+
+    // "Hoy no sube" de la tarde, registrado por los papás.
+    // Se puede leer uno por uno (los papás ven el suyo), pero
+    // solo el personal puede listarlos todos.
+    // Marca de que una familia ya usó la app, para saber a quién falta invitar.
+    match /familias/{codigo}/acceso/{id} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null;
+      allow delete: if coordinacion();
+    }
+
+    match /bajas/{id} {
+      allow get: if request.auth != null;
+      allow list: if personal();
+      allow create, update: if request.auth != null;
+      allow delete: if personal();
+    }
+
+    // Solicitudes de cambio de ruta o de lugar de entrega.
+    // Los papás crean y consultan la suya; solo coordinación resuelve.
+    match /solicitudes/{id} {
+      allow get: if request.auth != null;
+      allow list: if personal();
+      allow create: if request.auth != null;
+      allow update: if coordinacion()
+                    || (request.auth != null
+                        && resource.data.estado == 'pendiente'
+                        && request.resource.data.estado == 'cancelada');
+      allow delete: if coordinacion();
+    }
+
+    // Pase de lista de la salida y liberación de la ruta.
+    // La auxiliar la crea y pide liberar; solo coordinación libera.
+    match /salidas/{id} {
+      allow read: if personal();
+      allow create, update: if personal();
+      allow delete: if coordinacion();
+    }
+
     match /{documento=**} {
       allow read, write: if false;
     }

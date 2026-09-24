@@ -1,0 +1,16 @@
+{
+  "name": "Transporte Bilbao — Coordinación",
+  "short_name": "Coordinación",
+  "description": "Panel de coordinación del transporte del Colegio Bilbao.",
+  "start_url": "admin.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f5f8",
+  "theme_color": "#2f3b4a",
+  "lang": "es-MX",
+  "icons": [
+    { "src": "iconos/icono-admin-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "iconos/icono-admin-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "iconos/icono-admin-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
