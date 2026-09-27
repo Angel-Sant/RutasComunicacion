@@ -149,6 +149,12 @@ function coordinadorDe(codigo){
   for(var i=0;i<c.length;i++){ s^=c.charCodeAt(i); s=Math.imul(s,16777619); }
   return COORDINADORES[(s>>>0) % COORDINADORES.length];
 }
+/* Los dos coordinadores se muestran siempre; solo cambia el orden según la
+   familia, para que la carga de llamadas quede repartida sin quitar la opción. */
+function coordinadoresOrdenados(codigo){
+  var primero=coordinadorDe(codigo);
+  return [primero].concat(COORDINADORES.filter(function(c){ return c!==primero; }));
+}
 var LIMITE_TARDE="13:30";   /* después de esta hora ya no se puede avisar por la app */
 var MOTIVOS_BAJA=["Lo recojo yo","Enfermo","Cita médica","Actividad extraescolar","Se va con un familiar","Otro"];
 
@@ -251,14 +257,15 @@ function contactarCoordinacion(texto){
     "align-items:flex-end;justify-content:center;padding:16px";
   var caja=document.createElement("div");
   caja.style.cssText="background:#fff;border-radius:16px;padding:20px;width:100%;max-width:460px";
-  var co=coordinadorDe(codigoActual);
   caja.innerHTML='<h2 style="margin:0 0 6px">Contacte a coordinación</h2>'+
     '<p class="meta" style="margin-bottom:6px">'+texto+'</p>';
-  var bl=document.createElement("button");
-  bl.innerHTML="LLAMAR<br><span style='font-size:13px;font-weight:600;opacity:.9'>"+
-               co.nombre+" · "+telBonito(co.tel)+"</span>";
-  bl.addEventListener("click", function(){ capa.remove(); window.location.href="tel:+52"+co.tel; });
-  caja.appendChild(bl);
+  coordinadoresOrdenados(codigoActual).forEach(function(co){
+    var bl=document.createElement("button");
+    bl.innerHTML="LLAMAR A "+co.nombre.toUpperCase()+
+                 "<br><span style='font-size:13px;font-weight:600;opacity:.9'>"+telBonito(co.tel)+"</span>";
+    bl.addEventListener("click", function(){ capa.remove(); window.location.href="tel:+52"+co.tel; });
+    caja.appendChild(bl);
+  });
   var bc=document.createElement("button");
   bc.className="linea";
   bc.innerHTML="ENVIAR UN CORREO<br><span style='font-size:13px;font-weight:600'>Llega a los dos coordinadores</span>";
@@ -499,20 +506,21 @@ function pintarContacto(){
   var cont=$("contacto");
   if(!cont || cont.dataset.listo==="1") return;
   cont.dataset.listo="1";
-  var co=coordinadorDe(codigoActual);
   var nombres=MIS_ALUMNOS.map(function(a){ return a.nombre; }).join(" y ");
 
   var d=document.createElement("div");
   d.className="tarjeta";
   d.innerHTML='<h2 style="font-size:18px">¿Necesita hablar con nosotros?</h2>'+
-    '<p class="meta" style="font-size:14px">Para cualquier asunto que no se resuelva desde la app.</p>';
+    '<p class="meta" style="font-size:14px">Puede llamar a cualquiera de los dos coordinadores de transporte.</p>';
 
-  var bl=document.createElement("button");
-  bl.className="linea";
-  bl.innerHTML="LLAMAR A COORDINACIÓN<br><span style='font-size:13px;font-weight:600'>"+
-               co.nombre+" · "+telBonito(co.tel)+"</span>";
-  bl.addEventListener("click", function(){ window.location.href="tel:+52"+co.tel; });
-  d.appendChild(bl);
+  coordinadoresOrdenados(codigoActual).forEach(function(co){
+    var bl=document.createElement("button");
+    bl.className="linea";
+    bl.innerHTML="LLAMAR A "+co.nombre.toUpperCase()+
+                 "<br><span style='font-size:13px;font-weight:600'>"+telBonito(co.tel)+"</span>";
+    bl.addEventListener("click", function(){ window.location.href="tel:+52"+co.tel; });
+    d.appendChild(bl);
+  });
 
   var bc=document.createElement("button");
   bc.className="linea";
