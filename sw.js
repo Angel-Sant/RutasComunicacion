@@ -1,7 +1,7 @@
 /* Service worker de Transporte Bilbao.
    SUBE EL NÚMERO DE VERSION cada vez que cambies cualquier archivo:
    es lo que hace que los celulares se enteren de la versión nueva. */
-var VERSION = "tb-v4";
+var VERSION = "tb-v5";
 
 /* archivos propios: se guardan al instalar */
 var BASICOS = [
@@ -59,6 +59,10 @@ self.addEventListener("fetch", function(e){
 
   /* datos vivos de Firebase: nunca se guardan */
   if(esDatosVivos(url)) return;
+
+  /* OneSignal maneja lo suyo: su worker y su SDK no se tocan */
+  if(url.hostname.indexOf("onesignal.com") !== -1) return;
+  if(url.pathname.indexOf("/push/") !== -1) return;
 
   /* SDK de Firebase: primero lo guardado, para poder abrir sin señal.
      Se guarda conforme se usa, así que basta con haber abierto la app

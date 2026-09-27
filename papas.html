@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#1f5fa9">
 <title>Transporte Bilbao — Papás</title>
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -95,6 +96,7 @@ button.linea{background:#fff;color:var(--azul);border:2px solid var(--azul);}
 <section id="pPanel" class="wrap oculto">
   <div id="avisoDia"></div>
   <div id="hijos"></div>
+  <div id="avisos"></div>
   <div id="acciones"></div>
   <div id="contacto"></div>
   <div class="tarjeta">
@@ -117,6 +119,76 @@ var FIREBASE_CONFIG = {
 };
 
 var db=null, codigoActual=null, desuscribir=null;
+
+/* ===================== AVISOS (OneSignal) =====================
+   Su service worker va en la carpeta /push/ para no estorbar al sw.js
+   que hace instalable la app. */
+var ONESIGNAL_APP_ID="a241db7b-46ad-4cd1-a115-469ed627890f";
+var avisosListos=false;
+
+window.OneSignalDeferred = window.OneSignalDeferred || [];
+OneSignalDeferred.push(async function(OneSignal){
+  try{
+    await OneSignal.init({
+      appId: ONESIGNAL_APP_ID,
+      serviceWorkerPath: "push/OneSignalSDKWorker.js",
+      serviceWorkerParam: { scope: "/RutasComunicacion/push/" },
+      autoResubscribe: true,
+      promptOptions: { slidedown: { enabled: false } }   /* lo pedimos nosotros, no al entrar */
+    });
+    avisosListos=true;
+    if(codigoActual) vincularAvisos(codigoActual);
+    pintarAvisos();
+  }catch(e){ /* sin avisos, la app sigue funcionando igual */ }
+});
+
+/* liga este celular con el código de la familia, para que el aviso
+   de una ruta solo le llegue a quien le toca */
+function vincularAvisos(cod){
+  if(!avisosListos || !cod) return;
+  OneSignalDeferred.push(async function(OneSignal){
+    try{ await OneSignal.login(cod); }catch(e){}
+    pintarAvisos();
+  });
+}
+
+function avisosActivos(){
+  try{ return !!(window.OneSignal && OneSignal.Notifications && OneSignal.Notifications.permission); }
+  catch(e){ return false; }
+}
+
+function pedirAvisos(){
+  OneSignalDeferred.push(async function(OneSignal){
+    try{
+      await OneSignal.Notifications.requestPermission();
+      if(codigoActual) await OneSignal.login(codigoActual);
+    }catch(e){}
+    pintarAvisos();
+  });
+}
+
+/* tarjeta para activar los avisos, solo si aún no los tiene */
+function pintarAvisos(){
+  var cont=document.getElementById("avisos");
+  if(!cont) return;
+  if(!avisosListos || avisosActivos()){ cont.innerHTML=""; return; }
+  if(cont.dataset.puesto==="1") return;
+  cont.dataset.puesto="1";
+  var d=document.createElement("div");
+  d.className="tarjeta";
+  d.innerHTML='<h2 style="font-size:18px">Active los avisos</h2>'+
+    '<p class="meta" style="font-size:14px">Para que le avisemos cuando la ruta salga y cuando su hijo sea el siguiente.</p>';
+  var b=document.createElement("button");
+  b.textContent="ACTIVAR AVISOS";
+  b.addEventListener("click", function(){ cont.dataset.puesto="0"; pedirAvisos(); });
+  d.appendChild(b);
+  var n=document.createElement("p");
+  n.className="meta";
+  n.style.cssText="font-size:12.5px;margin-top:10px";
+  n.textContent="En iPhone primero agregue la app a la pantalla de inicio, o los avisos no llegan.";
+  d.appendChild(n);
+  cont.appendChild(d);
+}
 
 function $(id){ return document.getElementById(id); }
 function ver(id){
@@ -476,6 +548,8 @@ function escuchar(cod, silencioso){
         primera=false;
         try{ localStorage.setItem("tb_codigo_familia", cod); }catch(e){}
         registrarAcceso(cod);
+        vincularAvisos(cod);
+        pintarAvisos();
         ver("pPanel");
         cargarColegio(cod).then(function(){ pintarAcciones(); pintarContacto(); cargarExtras(); });
       }
