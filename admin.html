@@ -120,7 +120,8 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
     <h2 id="fmTitulo">Agregar alumno</h2>
     <p class="ayuda">Los campos marcados son los mínimos para que la app funcione. El correo es el que recibirá los avisos.</p>
     <div class="fila">
-      <div><label>Nombre completo *</label><input id="fNombre" placeholder="Sofía Ramírez"></div>
+      <div><label>Nombre completo *</label><input id="fNombre" placeholder="Sofía Ramírez" autocomplete="off">
+        <div id="avisoDup"></div></div>
       <div><label>Ruta de la mañana</label><select id="fRutaAM"></select></div>
       <div><label>Ruta de la tarde</label><select id="fRutaPM"></select></div>
       <div><label id="lbOrdenAM">Orden de parada (mañana)</label><input id="fOrdenAM" type="number" min="1" placeholder="3"></div>
@@ -514,7 +515,11 @@ function subirNube(){
     if(pendiente) estadoNube("Sin conexión: se subirá solo al volver el internet", "mal");
   }, 6000);
   docDatos.set(paqueteNube())
-    .then(function(){ pendiente = false; estadoNube("Guardado en la nube " + hhmm(), "ok"); })
+    .then(function(){
+      pendiente = false;
+      estadoNube("Guardado en la nube " + hhmm(), "ok");
+      publicarPerfiles();
+    })
     .catch(function(e){
       pendiente = false;
       estadoNube("No se pudo subir: " + (e.code === "permission-denied"
@@ -656,6 +661,7 @@ function limpiarForm(){
   Array.prototype.forEach.call(document.querySelectorAll(".diaCheck"), function(c){ c.checked = true; });
   $("btnCancelar").classList.add("oculto");
   $("fError").classList.add("oculto");
+  if($("avisoDup")) $("avisoDup").innerHTML="";
   $("fPERec").checked = false; $("fPEEnt").checked = false;
   refrescarEtiquetas();
 }
@@ -727,6 +733,20 @@ $("btnGuardarAl").addEventListener("click", function(){
     window.scrollTo(0,0);
     return;
   }
+  /* última red: no dejar guardar dos veces al mismo alumno */
+  var dup = buscarParecidos(a.nombre, editandoId);
+  if(dup.iguales.length){
+    var y = dup.iguales[0];
+    if(!confirm("Ya está capturado " + y.nombre + " (" + (y.seccion||"") + " " + (y.grado||"") +
+                ", " + rutasTexto(y) + ").\n\n" +
+                "Aceptar = guardar de todos modos, son dos alumnos distintos.\n" +
+                "Cancelar = no guardar.")) return;
+  } else if(dup.parecidos.length){
+    var z = dup.parecidos[0];
+    if(!confirm("Hay un alumno muy parecido: " + z.nombre + " (" + rutasTexto(z) + ").\n\n" +
+                "¿Es otra persona? Aceptar para guardar, Cancelar para revisar.")) return;
+  }
+
   var movAM = insertarParada(a, "am");
   var movPM = insertarParada(a, "pm");
 
@@ -987,6 +1007,77 @@ $("btnColegio").addEventListener("click", function(){
 });
 
 
+
+/* ============ EVITAR ALUMNOS DUPLICADOS ============
+   Con 96 alumnos y nombres parecidos es fácil capturar dos veces
+   al mismo. Se compara sin acentos, sin mayúsculas y sin importar
+   el orden de las palabras. */
+function normaliza(s){
+  return (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .toUpperCase().replace(/[^A-Z0-9 ]/g," ").replace(/\s+/g," ").trim();
+}
+function palabras(s){ return normaliza(s).split(" ").filter(Boolean); }
+function mismaPersona(a, b){
+  var x=palabras(a).slice().sort().join(" "), y=palabras(b).slice().sort().join(" ");
+  return x===y && x!=="";
+}
+function seParecen(a, b){
+  var x=palabras(a), y=palabras(b);
+  if(x.length<2 || y.length<2) return false;
+  /* mismos dos apellidos y comparten al menos un nombre de pila */
+  var apX=x.slice(0,2).join(" "), apY=y.slice(0,2).join(" ");
+  if(apX!==apY) return false;
+  var pilaX=x.slice(2), pilaY=y.slice(2);
+  if(!pilaX.length || !pilaY.length) return true;
+  return pilaX.some(function(p){ return pilaY.indexOf(p)!==-1; });
+}
+function rutasTexto(a){
+  var r=[];
+  var ra=a.rutaAM||(a.am?a.ruta:""), rp=a.rutaPM||(a.pm?a.ruta:"");
+  if(ra) r.push("AM R"+ra);
+  if(rp) r.push("PM R"+rp);
+  return r.join(" · ");
+}
+
+function buscarParecidos(nombre, excluirId){
+  var iguales=[], parecidos=[];
+  D.alumnos.forEach(function(a){
+    if(a.id===excluirId) return;
+    if(mismaPersona(a.nombre, nombre)) iguales.push(a);
+    else if(seParecen(a.nombre, nombre)) parecidos.push(a);
+  });
+  return { iguales:iguales, parecidos:parecidos };
+}
+
+/* mientras escribe el nombre, avisa si ya existe */
+function revisarDuplicado(){
+  var cont=$("avisoDup"); if(!cont) return;
+  var nombre=$("fNombre").value.trim();
+  cont.innerHTML="";
+  if(palabras(nombre).length < 2) return;
+  var r=buscarParecidos(nombre, editandoId);
+  var lista=r.iguales.concat(r.parecidos);
+  if(!lista.length) return;
+
+  var d=document.createElement("div");
+  d.className="aviso" + (r.iguales.length ? " mal" : "");
+  d.style.marginTop="8px";
+  d.innerHTML="<b>"+(r.iguales.length ? "Ya existe este alumno" : "Hay alumnos parecidos")+":</b>";
+  lista.slice(0,4).forEach(function(a){
+    var f=document.createElement("div");
+    f.style.cssText="margin-top:6px;display:flex;justify-content:space-between;align-items:center;gap:8px";
+    var s=document.createElement("span");
+    s.innerHTML=a.nombre+' <span class="chico">'+(a.seccion||"")+" "+(a.grado||"")+" · "+rutasTexto(a)+"</span>";
+    var b=document.createElement("button");
+    b.className="mini"; b.textContent="Editar este";
+    b.addEventListener("click", function(){ editar(a.id); });
+    f.appendChild(s); f.appendChild(b);
+    d.appendChild(f);
+  });
+  cont.appendChild(d);
+}
+$("fNombre").addEventListener("input", revisarDuplicado);
+
 /* ============ INSERTAR UNA PARADA A MITAD DEL RECORRIDO ============
    Si el número de parada ya está ocupado, los que siguen se recorren
    un lugar. Salvo que sea un punto de encuentro: ahí se comparte. */
@@ -1044,6 +1135,66 @@ function insertarParada(nuevo, turno){
   return { movidos:movidos, desde:o, ruta:r, turno:turno };
 }
 
+
+
+/* ============ PERFIL POR FAMILIA ============
+   La app de papás no puede leer el padrón completo (ni debe).
+   Se le publica a cada familia un documento con solo lo suyo:
+   sus hijos, su contacto y los lugares libres de cada ruta. */
+function lugaresLibres(){
+  var r={};
+  Object.keys(D.rutas).forEach(function(k){
+    var cupo=D.rutas[k].cupo||0, am=0, pm=0;
+    D.alumnos.forEach(function(a){
+      if(a.am && (a.rutaAM||a.ruta)===k) am++;
+      if(a.pm && (a.rutaPM||a.ruta)===k) pm++;
+    });
+    r[k]={ cupo:cupo, libresAM:cupo-am, libresPM:cupo-pm };
+  });
+  return r;
+}
+
+function perfilDe(tel){
+  var f=D.familias[tel];
+  var hijos=hijosDe(tel).map(function(a){
+    return { id:a.id, nombre:a.nombre, seccion:a.seccion||"", grado:a.grado||"",
+             rutaAM:a.rutaAM||a.ruta||"", rutaPM:a.rutaPM||a.ruta||"",
+             am:a.am!==false, pm:a.pm!==false };
+  });
+  var yo=null;
+  D.alumnos.forEach(function(a){
+    (a.contactos||[]).forEach(function(c){
+      if((c.tel||"").replace(/\D/g,"")===tel && !yo) yo={ nombre:c.nombre||"", tel:tel };
+    });
+  });
+  return {
+    codigo:f.codigo, contacto:yo||{nombre:f.nombre||"", tel:tel},
+    hijos:hijos, rutas:lugaresLibres(),
+    colegio:{ nombre:D.colegio.nombre, direccion:D.colegio.direccion },
+    actualizado:Date.now()
+  };
+}
+
+/* solo se suben los perfiles que cambiaron, para no gastar escrituras */
+function publicarPerfiles(){
+  if(!NUBE) return;
+  var db=firebase.firestore(), huellas={};
+  try{ huellas=JSON.parse(localStorage.getItem("tb_huellas_perfil")||"{}"); }catch(e){}
+  var cambiados=0;
+  Object.keys(D.familias||{}).forEach(function(tel){
+    if(!hijosDe(tel).length) return;
+    var p=perfilDe(tel);
+    var sinFecha=JSON.stringify([p.codigo,p.contacto,p.hijos,p.rutas]);
+    if(huellas[tel]===sinFecha) return;
+    db.collection("familias").doc(p.codigo).collection("datos").doc("perfil")
+      .set(JSON.parse(JSON.stringify(p)))
+      .then(function(){ huellas[tel]=sinFecha;
+        try{ localStorage.setItem("tb_huellas_perfil", JSON.stringify(huellas)); }catch(e){} })
+      .catch(function(){});
+    cambiados++;
+  });
+  if(cambiados) estadoNube("Guardado en la nube "+hhmm()+" · "+cambiados+" familia(s) actualizada(s)", "ok");
+}
 
 /* ======================= FAMILIAS Y CÓDIGOS =======================
    Un código por contacto, identificado por su teléfono.

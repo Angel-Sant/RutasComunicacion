@@ -386,15 +386,11 @@ function contactarCoordinacion(texto){
   document.body.appendChild(capa);
 }
 function cupoDe(rutaNum, turno){
-  if(!DATOS_COLEGIO) return null;
+  if(!DATOS_COLEGIO || !DATOS_COLEGIO.rutas) return null;
   var r=DATOS_COLEGIO.rutas[rutaNum];
   if(!r) return null;
-  var n=0;
-  DATOS_COLEGIO.alumnos.forEach(function(a){
-    if(turno==="am"){ if(a.am && (a.rutaAM||a.ruta)===rutaNum) n++; }
-    else { if(a.pm && (a.rutaPM||a.ruta)===rutaNum) n++; }
-  });
-  return { ocupados:n, cupo:r.cupo||0, libres:(r.cupo||0)-n };
+  var libres=(turno==="am") ? r.libresAM : r.libresPM;
+  return { cupo:r.cupo||0, libres:(libres||0), ocupados:(r.cupo||0)-(libres||0) };
 }
 
 function accionCambio(al){
@@ -547,24 +543,25 @@ function entrar(cod, silencioso){
   escuchar(cod, silencioso);
 }
 
+/* La app de papás ya no lee el padrón completo (las reglas no lo permiten,
+   y con razón: ahí están los datos de todos los alumnos).
+   Coordinación le publica a cada familia un documento con solo lo suyo. */
 function cargarColegio(cod){
-  return db.collection("transporte").doc("datos").get().then(function(s){
-    if(!s.exists) return;
-    DATOS_COLEGIO=s.data();
-    var tel=null;
-    Object.keys(DATOS_COLEGIO.familias||{}).forEach(function(t){
-      if(DATOS_COLEGIO.familias[t].codigo===cod) tel=t;
-    });
-    if(!tel) return;
-    MIS_ALUMNOS=DATOS_COLEGIO.alumnos.filter(function(a){
-      return (a.contactos||[{tel:a.tel}]).some(function(c){ return (c.tel||"").replace(/\D/g,"")===tel; });
-    });
-    MIS_ALUMNOS.forEach(function(a){
-      (a.contactos||[]).forEach(function(c){ if((c.tel||"").replace(/\D/g,"")===tel) MI_CONTACTO=c; });
-    });
-    if(DATOS_COLEGIO.colegio && DATOS_COLEGIO.colegio.coordinadores && DATOS_COLEGIO.colegio.coordinadores.length)
-      COORDINADORES=DATOS_COLEGIO.colegio.coordinadores;
-  }).catch(function(){});
+  return db.collection("familias").doc(cod).collection("datos").doc("perfil").get()
+    .then(function(s){
+      if(!s.exists){ DATOS_COLEGIO=null; return; }
+      var p=s.data();
+      DATOS_COLEGIO=p;
+      MIS_ALUMNOS=(p.hijos||[]).map(function(x){
+        return { id:x.id, nombre:x.nombre, seccion:x.seccion, grado:x.grado,
+                 ruta:x.rutaPM||x.rutaAM, rutaAM:x.rutaAM, rutaPM:x.rutaPM,
+                 am:x.am!==false, pm:x.pm!==false };
+      });
+      MI_CONTACTO=p.contacto||null;
+      if(p.colegio && p.colegio.nombre) $("hdSub").textContent=p.colegio.nombre;
+      if(p.coordinadores && p.coordinadores.length) COORDINADORES=p.coordinadores;
+    })
+    .catch(function(){ DATOS_COLEGIO=null; });
 }
 
 function escuchar(cod, silencioso){
@@ -649,7 +646,16 @@ function pintarAcciones(){
   var cont=$("acciones");
   if(!cont) return;
   cont.innerHTML="";
-  if(!MIS_ALUMNOS.length) return;
+  if(!MIS_ALUMNOS.length){
+    if(DATOS_COLEGIO===null){
+      var av=document.createElement("div");
+      av.className="tarjeta";
+      av.innerHTML='<div class="aviso">Todavía no podemos mostrar las opciones de su familia.<br>'+
+        'Si acaba de recibir su código, inténtelo más tarde o avísenos.</div>';
+      cont.appendChild(av);
+    }
+    return;
+  }
 
   MIS_ALUMNOS.forEach(function(al){
     var d=document.createElement("div");
