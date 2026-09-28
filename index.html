@@ -677,7 +677,9 @@ function armarRuta(){
   if(navigator.geolocation && !GEO_NEGADO)
     av+='<div class="aviso ok">Al comenzar, el celular te va a pedir permiso de <b>ubicación</b>. Acepta "mientras uso la app": sirve para que los papás sepan por dónde va el camión. Si no la das, todo lo demás funciona igual.</div>';
   if(CANAL_AVISOS==="app" && !ENVIO_REAL)
-    av+='<div class="aviso">Los avisos a papás se registran solos al avanzar, pero todavía <b>no les llegan</b>: falta instalar la app de papás. Mientras tanto, avísales como siempre.</div>';
+    av+='<div class="aviso">Los avisos a papás se registran, pero todavía <b>no se envían</b>.</div>';
+  if(CANAL_AVISOS==="app" && ENVIO_REAL)
+    av+='<div class="aviso ok">Los avisos a los papás salen solos al avanzar de parada. Solo les llegan a quienes ya activaron la app.</div>';
   if(pe) av+='<div class="aviso ok">'+pe+' punto(s) de encuentro. Ahí no hay que avisar: las familias ya están esperando.</div>';
   if(!nn) av='<div class="aviso">Hoy no hay niños en este recorrido. Confirma con coordinación antes de salir.</div>';
   $("ruExcep").innerHTML=av;
@@ -1011,25 +1013,114 @@ function pintarFamilias(){
 $("btnAvSeguir").addEventListener("click", mostrarParada);
 
 /* ---------- aviso por la app ----------
-   Por ahora el aviso se registra en una cola en el celular.
-   Cuando esté la app de papás, esta misma cola se sube a Firebase
-   y un servidor manda la notificación a cada familia. */
-function avisarPorApp(parada){
-  var fams=familiasDe(parada), esPrimera=(S.idx===0);
-  if(!S.cola) S.cola=[];
-  var ts=Date.now();
-  fams.forEach(function(f){
-    S.cola.push({ ts:ts, ruta:S.rutaNum, turno:S.turno, parada:parada.titulo,
-                  alumnos:f.ninos.map(function(n){ return n.id; }),
-                  tel:f.tel, texto:textoAviso(f, parada), enviado:false });
-    parada.avisados[f.tel]=ts;
-  });
-  guardar();
-  var n=fams.length;
-  mostrarAvisoToast((esPrimera?"Aviso de salida":"Aviso")+" para "+n+(n===1?" familia":" familias")+
-    " de "+parada.titulo+(ENVIO_REAL?"":" · registrado, sin enviar todavía"));
+   Al avanzar de parada se manda el aviso a las familias que siguen.
+   El envío lo hace el Worker de Cloudflare: la clave de OneSignal
+   nunca viaja dentro de esta app. */
+var WORKER_AVISOS = "https://delicate-lab-a960.miguel-santana-mon.workers.dev";
+var ENVIO_REAL = !!WORKER_AVISOS;
+
+function codigoDeFamilia(tel){
+  var t=(tel||"").replace(/\D/g,"");
+  var f=(D.familias||{})[t];
+  return f?f.codigo:null;
 }
-var ENVIO_REAL = false;   /* se vuelve true cuando esté conectada la app de papás */
+
+/* cada familia recibe su propio texto, con el nombre de sus hijos */
+function familiasConCodigo(parada){
+  var m={}, orden=[];
+  parada.ninos.forEach(function(n){
+    var al=null;
+    D.alumnos.forEach(function(a){ if(a.id===n.id) al=a; });
+    var cont=(al&&al.contactos&&al.contactos.length) ? al.contactos : [{tel:(al&&al.tel)||n.tel}];
+    cont.forEach(function(c){
+      var cod=codigoDeFamilia(c.tel);
+      if(!cod) return;
+      if(!m[cod]){ m[cod]={codigo:cod, ninos:[]}; orden.push(cod); }
+      if(m[cod].ninos.indexOf(n)===-1) m[cod].ninos.push(n);
+    });
+  });
+  return orden.map(function(k){ return m[k]; });
+}
+
+function primerNombre(nombre){
+  var t=(nombre||"").split(" ");
+  return t.length>2 ? t.slice(2).join(" ") : t[t.length-1];
+}
+
+/* manda un aviso; si falla, queda en la cola para reintentar */
+function enviarAviso(tipo, familia, datos, parada){
+  var reg={ ts:Date.now(), tipo:tipo, codigo:familia.codigo, ruta:S.rutaNum,
+            turno:S.turno, parada:(parada?parada.titulo:""), datos:datos, enviado:false };
+  if(!S.cola) S.cola=[];
+  S.cola.push(reg);
+  guardar();
+
+  if(!ENVIO_REAL || !NUBE || !firebase.auth().currentUser) return Promise.resolve(false);
+
+  return firebase.auth().currentUser.getIdToken()
+    .then(function(tok){
+      return fetch(WORKER_AVISOS, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ idToken:tok, tipo:tipo, familias:[familia.codigo], datos:datos })
+      });
+    })
+    .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return {ok:r.ok, j:j}; }); })
+    .then(function(res){
+      reg.enviado=!!res.ok;
+      reg.respuesta=res.ok ? (res.j.enviados!==null ? res.j.enviados : "ok") : (res.j.error||"error");
+      guardar();
+      return !!res.ok;
+    })
+    .catch(function(){ guardar(); return false; });
+}
+
+/* aviso a las familias de la parada que sigue */
+function avisarPorApp(parada){
+  var fams=familiasConCodigo(parada), esPrimera=(S.idx===0);
+  if(!fams.length){
+    mostrarAvisoToast("Esa parada no tiene familias con la app activada", 5000);
+    return;
+  }
+  var pendientes=fams.length, fallas=0;
+  fams.forEach(function(f){
+    var datos={ ruta:String(S.rutaNum), turno:S.turno, punto:parada.titulo,
+                alumno:primerNombre(f.ninos[0].nombre), varios:f.ninos.length>1 };
+    enviarAviso(esPrimera?"salida":"siguiente", f, datos, parada).then(function(ok){
+      if(!ok) fallas++;
+      if(--pendientes===0){
+        parada.avisados=parada.avisados||{};
+        fams.forEach(function(x){ parada.avisados[x.codigo]=Date.now(); });
+        guardar();
+        mostrarAvisoToast(
+          fallas===0
+            ? "Aviso enviado a "+fams.length+(fams.length===1?" familia":" familias")+" de "+parada.titulo
+            : "Aviso enviado a "+(fams.length-fallas)+" de "+fams.length+" · "+fallas+" quedaron pendientes",
+          fallas===0?4000:7000);
+      }
+    });
+  });
+}
+
+/* aviso de llegada, al cerrar la ruta */
+function avisarLlegada(){
+  if(!ENVIO_REAL) return;
+  var esAM=S.turno==="manana", vistos={};
+  S.paradas.forEach(function(p){
+    familiasConCodigo(p).forEach(function(f){
+      if(vistos[f.codigo]) return;
+      vistos[f.codigo]=1;
+      var detalle=f.ninos.map(function(n){
+        return primerNombre(n.nombre)+(n.estado==="si"&&n.ts ? (esAM?" abordó a las ":" bajó a las ")+hora(n.ts) : " no viajó");
+      }).join(", ")+".";
+      enviarAviso("llegada", f, {
+        ruta:String(S.rutaNum), turno:S.turno, hora:hora(S.fin),
+        detalle:detalle, comentario:(S.motivo||"")+(S.comentario?" — "+S.comentario:"")
+      }, p);
+    });
+  });
+}
+
 function mostrarAvisoToast(t, ms){
   var d=document.getElementById("toastAviso");
   if(!d){
@@ -1076,6 +1167,7 @@ function irCierre(){
 }
 $("btnCerrar").addEventListener("click", function(){
   S.fin=Date.now(); S.comentario=$("comentario").value.trim();
+  avisarLlegada();
   ULTIMA_POS=null;          /* al cerrar no queda rastro de por dónde anduvo la unidad */
   guardarRecorrido();
   publicarTodos();
