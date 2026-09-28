@@ -124,14 +124,14 @@ var db=null, codigoActual=null, desuscribir=null;
    Su service worker va en la carpeta /push/ para no estorbar al sw.js
    que hace instalable la app. */
 var ONESIGNAL_APP_ID="a241db7b-46ad-4cd1-a115-469ed627890f";
-var avisosListos=false;
+var avisosListos=false, avisosError="";
 
 window.OneSignalDeferred = window.OneSignalDeferred || [];
 OneSignalDeferred.push(async function(OneSignal){
   try{
     await OneSignal.init({
       appId: ONESIGNAL_APP_ID,
-      serviceWorkerPath: "push/OneSignalSDKWorker.js",
+      serviceWorkerPath: "RutasComunicacion/push/OneSignalSDKWorker.js",
       serviceWorkerParam: { scope: "/RutasComunicacion/push/" },
       autoResubscribe: true,
       promptOptions: { slidedown: { enabled: false } }   /* lo pedimos nosotros, no al entrar */
@@ -141,7 +141,11 @@ OneSignalDeferred.push(async function(OneSignal){
     if(permisoDado() && !avisosActivos()) pedirAvisos();
     if(codigoActual) vincularAvisos(codigoActual);
     pintarAvisos();
-  }catch(e){ /* sin avisos, la app sigue funcionando igual */ }
+  }catch(e){
+    /* sin avisos la app sigue funcionando, pero dejamos ver el motivo */
+    avisosError=(e && (e.message||e.toString())) || "no se pudo iniciar";
+    pintarAvisos();
+  }
 });
 
 /* liga este celular con el código de la familia, para que el aviso
@@ -176,7 +180,8 @@ function pedirAvisos(){
         await OneSignal.User.PushSubscription.optIn();
       }
       if(codigoActual) await OneSignal.login(codigoActual);
-    }catch(e){}
+      avisosError="";
+    }catch(e){ avisosError=(e && (e.message||e.toString())) || "no se pudo activar"; }
     pintarAvisos();
   });
 }
@@ -185,7 +190,8 @@ function pedirAvisos(){
 function pintarAvisos(){
   var cont=document.getElementById("avisos");
   if(!cont) return;
-  if(!avisosListos || avisosActivos()){ cont.innerHTML=""; cont.dataset.puesto="0"; return; }
+  if(avisosActivos()){ cont.innerHTML=""; cont.dataset.puesto="0"; return; }
+  if(!avisosListos && !avisosError){ cont.innerHTML=""; cont.dataset.puesto="0"; return; }
   if(cont.dataset.puesto==="1") return;
   cont.dataset.puesto="1";
   cont.innerHTML="";
@@ -205,6 +211,13 @@ function pintarAvisos(){
   n.style.cssText="font-size:12.5px;margin-top:10px";
   n.textContent="En iPhone primero agregue la app a la pantalla de inicio, o los avisos no llegan.";
   d.appendChild(n);
+  if(avisosError){
+    var er=document.createElement("p");
+    er.className="err";
+    er.style.cssText="font-size:12px;margin-top:8px";
+    er.textContent="Detalle técnico: "+avisosError;
+    d.appendChild(er);
+  }
   cont.appendChild(d);
 }
 
@@ -772,7 +785,11 @@ function pintar(docs){
   $("pieInfo").textContent="Última actualización: "+hora(ult)+" · código "+codigoActual;
 }
 
-$("btnActualizar").addEventListener("click", function(){ if(codigoActual) escuchar(codigoActual,true); });
+$("btnActualizar").addEventListener("click", function(){
+  if(codigoActual) escuchar(codigoActual,true);
+  if(avisosListos && !avisosActivos()) pedirAvisos();
+  pintarAvisos();
+});
 $("btnSalir").addEventListener("click", function(){
   if(!confirm("Se borrará su código de este celular y tendrá que escribirlo otra vez. ¿Continuar?")) return;
   try{ localStorage.removeItem("tb_codigo_familia"); }catch(e){}
