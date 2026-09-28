@@ -39,6 +39,13 @@ service cloud.firestore {
       allow delete: if coordinacion();
     }
 
+    // Los datos de esa familia: sus hijos y los lugares libres de cada ruta.
+    // Solo coordinación los escribe; el papá los lee con su código.
+    match /familias/{codigo}/datos/{id} {
+      allow read: if request.auth != null;
+      allow write: if coordinacion();
+    }
+
     // Marca de que una familia ya usó la app, para saber a quién falta invitar.
     match /familias/{codigo}/acceso/{id} {
       allow read: if request.auth != null;
