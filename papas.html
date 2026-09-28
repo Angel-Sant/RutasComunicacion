@@ -137,6 +137,8 @@ OneSignalDeferred.push(async function(OneSignal){
       promptOptions: { slidedown: { enabled: false } }   /* lo pedimos nosotros, no al entrar */
     });
     avisosListos=true;
+    /* si el permiso ya estaba dado de antes, se suscribe solo */
+    if(permisoDado() && !avisosActivos()) pedirAvisos();
     if(codigoActual) vincularAvisos(codigoActual);
     pintarAvisos();
   }catch(e){ /* sin avisos, la app sigue funcionando igual */ }
@@ -152,7 +154,15 @@ function vincularAvisos(cod){
   });
 }
 
+/* Tener el permiso de Chrome no basta: lo que cuenta es estar suscrito
+   en OneSignal, que es distinto y puede faltar aunque el permiso ya esté dado. */
 function avisosActivos(){
+  try{
+    var ps=window.OneSignal && OneSignal.User && OneSignal.User.PushSubscription;
+    return !!(ps && ps.optedIn && ps.id);
+  }catch(e){ return false; }
+}
+function permisoDado(){
   try{ return !!(window.OneSignal && OneSignal.Notifications && OneSignal.Notifications.permission); }
   catch(e){ return false; }
 }
@@ -160,7 +170,11 @@ function avisosActivos(){
 function pedirAvisos(){
   OneSignalDeferred.push(async function(OneSignal){
     try{
-      await OneSignal.Notifications.requestPermission();
+      if(!permisoDado()) await OneSignal.Notifications.requestPermission();
+      /* con el permiso ya dado, hay que suscribir explícitamente */
+      if(OneSignal.User.PushSubscription && !OneSignal.User.PushSubscription.optedIn){
+        await OneSignal.User.PushSubscription.optIn();
+      }
       if(codigoActual) await OneSignal.login(codigoActual);
     }catch(e){}
     pintarAvisos();
@@ -171,13 +185,17 @@ function pedirAvisos(){
 function pintarAvisos(){
   var cont=document.getElementById("avisos");
   if(!cont) return;
-  if(!avisosListos || avisosActivos()){ cont.innerHTML=""; return; }
+  if(!avisosListos || avisosActivos()){ cont.innerHTML=""; cont.dataset.puesto="0"; return; }
   if(cont.dataset.puesto==="1") return;
   cont.dataset.puesto="1";
+  cont.innerHTML="";
   var d=document.createElement("div");
   d.className="tarjeta";
   d.innerHTML='<h2 style="font-size:18px">Active los avisos</h2>'+
-    '<p class="meta" style="font-size:14px">Para que le avisemos cuando la ruta salga y cuando su hijo sea el siguiente.</p>';
+    '<p class="meta" style="font-size:14px">'+
+    (permisoDado()
+      ? "Su celular ya tiene el permiso, solo falta activarlos para esta app."
+      : "Para que le avisemos cuando la ruta salga y cuando su hijo sea el siguiente.")+'</p>';
   var b=document.createElement("button");
   b.textContent="ACTIVAR AVISOS";
   b.addEventListener("click", function(){ cont.dataset.puesto="0"; pedirAvisos(); });
