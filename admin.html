@@ -2072,6 +2072,67 @@ function ocupantes(ruta, turno){
     return x.nombre.localeCompare(y.nombre);
   });
 }
+
+/* ---------- ficha del alumno en el mapa de lugares ----------
+   Al pasar el mouse se ve su información; al dar clic se abre su edición. */
+function fichaTexto(a){
+  var rAM=a.rutaAM||(a.am?a.ruta:""), rPM=a.rutaPM||(a.pm?a.ruta:"");
+  var oAM=a.ordenAM||a.orden||99, oPM=a.ordenPM||a.orden||99;
+  var l=[];
+  l.push('<div style="font-size:15px;font-weight:700;margin-bottom:4px">'+a.nombre+'</div>');
+  l.push('<div style="color:#5a6675;margin-bottom:8px">'+(NOM_SEC[a.seccion]||a.seccion||"")+" "+(a.grado||"")+'</div>');
+  l.push('<div><b>Mañana:</b> '+(rAM ? "Ruta "+rAM+" · sube en la parada "+(oAM===99?"—":oAM) : "no usa el transporte")+'</div>');
+  l.push('<div><b>Tarde:</b> '+(rPM ? "Ruta "+rPM+" · baja en la parada "+(oPM===99?"—":oPM) : "no usa el transporte")+'</div>');
+  if(a.dirRec) l.push('<div style="margin-top:6px"><b>Recogida:</b> '+a.dirRec+(a.peRec?" · punto de encuentro":"")+'</div>');
+  if(a.dirEnt) l.push('<div><b>Entrega:</b> '+a.dirEnt+(a.peEnt?" · punto de encuentro":"")+'</div>');
+  (a.contactos||[]).forEach(function(c,i){
+    l.push('<div style="margin-top:'+(i?"2px":"6px")+'"><b>Contacto '+(i+1)+':</b> '+
+           (c.nombre||"")+' · '+(c.tel||"")+'</div>');
+    if(c.email) l.push('<div style="color:#5a6675;font-size:12px">'+c.email+'</div>');
+  });
+  l.push('<div style="margin-top:8px;color:#1f5fa9;font-weight:600">Clic para editar</div>');
+  return l.join("");
+}
+function ocultarFicha(){
+  var f=document.getElementById("fichaAl");
+  if(f) f.remove();
+}
+function mostrarFicha(a, x, y){
+  ocultarFicha();
+  var f=document.createElement("div");
+  f.id="fichaAl";
+  f.style.cssText="position:fixed;z-index:400;max-width:330px;background:#fff;border:1px solid var(--linea);"+
+    "border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.45;"+
+    "box-shadow:0 6px 20px rgba(0,0,0,.18);pointer-events:none";
+  f.innerHTML=fichaTexto(a);
+  document.body.appendChild(f);
+  var an=f.getBoundingClientRect();
+  var iz=Math.min(x+14, window.innerWidth-an.width-12);
+  var ar=Math.min(y+14, window.innerHeight-an.height-12);
+  f.style.left=Math.max(8, iz)+"px";
+  f.style.top=Math.max(8, ar)+"px";
+}
+function engancharFichas(){
+  var cont=$("mpSalida");
+  if(!cont) return;
+  Array.prototype.forEach.call(cont.querySelectorAll("[data-al]"), function(el){
+    var a=null;
+    D.alumnos.forEach(function(x){ if(x.id===el.dataset.al) a=x; });
+    if(!a) return;
+    el.addEventListener("mouseenter", function(e){ mostrarFicha(a, e.clientX, e.clientY); });
+    el.addEventListener("mousemove", function(e){ mostrarFicha(a, e.clientX, e.clientY); });
+    el.addEventListener("mouseleave", ocultarFicha);
+    el.addEventListener("click", function(){
+      ocultarFicha();
+      editar(a.id);
+      Array.prototype.forEach.call(document.querySelectorAll("nav button"), function(b){
+        if(b.dataset.t==="tAlumnos") b.click();
+      });
+      window.scrollTo(0,0);
+    });
+  });
+}
+
 function pintarMapa(){
   var turno = $("mpTurno").value;
   var filtro = $("mpRuta").value;
@@ -2099,7 +2160,8 @@ function pintarMapa(){
         var s = f[j], a = lista[idx]; idx++;
         if(a){
           var nom = a.nombre.length > 24 ? a.nombre.slice(0,23) + "…" : a.nombre;
-          bus += '<div class="s ' + (CLASE_SEC[a.seccion] || "") + '"><span class="num">' + s +
+          bus += '<div class="s ' + (CLASE_SEC[a.seccion] || "") + '" data-al="' + a.id +
+                 '" style="cursor:pointer"><span class="num">' + s +
                  '</span><span class="nm">' + nom + '</span><span class="gr">' +
                  (NOM_SEC[a.seccion] || "") + ' ' + (a.grado || "") + '</span></div>';
         } else {
@@ -2113,6 +2175,7 @@ function pintarMapa(){
     cont.appendChild(u);
   });
   if(!cont.children.length) cont.innerHTML = '<p class="ayuda">No hay alumnos capturados todavía.</p>';
+  engancharFichas();
 }
 $("mpTurno").addEventListener("change", pintarMapa);
 $("mpRuta").addEventListener("change", pintarMapa);

@@ -921,7 +921,8 @@ function pedirMotivoNo(n){
     b.style.marginTop="6px";
     b.textContent=m;
     b.addEventListener("click", function(){
-      n.estado="no"; n.ts=Date.now(); n.motivoNo=m; guardar(); publicarAvance(n); pintarNinos();
+      n.estado="no"; n.ts=Date.now(); n.motivoNo=m;
+      guardar(); publicarAvance(n); avisarNoSubio(n); pintarNinos();
     });
     caja.appendChild(b);
   });
@@ -1097,6 +1098,38 @@ function avisarPorApp(parada){
             ? "Aviso enviado a "+fams.length+(fams.length===1?" familia":" familias")+" de "+parada.titulo
             : "Aviso enviado a "+(fams.length-fallas)+" de "+fams.length+" · "+fallas+" quedaron pendientes",
           fallas===0?4000:7000);
+      }
+    });
+  });
+}
+
+/* aviso a la familia cuando el niño no subió y la unidad siguió su camino */
+function avisarNoSubio(nino){
+  if(!ENVIO_REAL) return;
+  var parada=null;
+  S.paradas.forEach(function(p){ p.ninos.forEach(function(x){ if(x.id===nino.id) parada=p; }); });
+  if(!parada) return;
+
+  /* solo las familias de ese niño, no las de toda la parada */
+  var fams=familiasConCodigo({ ninos:[nino] });
+  if(!fams.length){
+    mostrarAvisoToast("Esa familia no tiene la app activada: avísale por teléfono", 7000);
+    return;
+  }
+  var pendientes=fams.length, fallas=0;
+  fams.forEach(function(f){
+    enviarAviso("no_subio", f, {
+      ruta:String(S.rutaNum), turno:S.turno, punto:parada.titulo,
+      alumno:primerNombre(nino.nombre), varios:false,
+      hora:hora(nino.ts||Date.now()), motivo:nino.motivoNo||""
+    }, parada).then(function(ok){
+      if(!ok) fallas++;
+      if(--pendientes===0){
+        mostrarAvisoToast(
+          fallas===0
+            ? "Se avisó a la familia de "+primerNombre(nino.nombre)+" que la unidad siguió su camino"
+            : "No se pudo avisar a la familia de "+primerNombre(nino.nombre)+". Márcale por teléfono",
+          fallas===0?5000:9000);
       }
     });
   });
