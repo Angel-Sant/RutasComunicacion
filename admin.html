@@ -267,6 +267,12 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
     </div>
     <button class="b linea" id="btnCopiarTodos">COPIAR TODOS LOS QUE FALTAN POR INVITAR</button>
   </div>
+
+  <div class="card">
+    <h2>Revisión de privacidad</h2>
+    <p class="ayuda">Un teléfono equivale a una familia. Aquí se avisa si un mismo número quedó ligado a alumnos de apellidos distintos, que casi siempre es un error de captura.</p>
+    <div id="revisionTel"></div>
+  </div>
 </section>
 
 
@@ -1283,6 +1289,7 @@ function cargarAccesos(){
 function pintarFamilias(){
   sincronizarFamilias();
   cargarAccesos();
+  pintarRevision();
   var fr = $("famRuta").value, fe = $("famEstado").value;
   var q = $("famBuscar").value.trim().toLowerCase();
   var tb = $("famBody"); tb.innerHTML = "";
@@ -1386,6 +1393,73 @@ $("btnCopiarTodos").addEventListener("click", function(){
   setTimeout(function(){ $("btnCopiarTodos").textContent = "COPIAR TODOS LOS QUE FALTAN POR INVITAR"; }, 2500);
 });
 
+
+
+/* ============ REVISIÓN DE TELÉFONOS COMPARTIDOS ============
+   Un teléfono define a una familia: quien lo tenga ve a esos alumnos
+   y puede dar de baja su regreso. Si un mismo número queda ligado a
+   alumnos de apellidos distintos, casi siempre es un error de captura,
+   y el efecto sería que una familia vea al hijo de otra. */
+function apellidosDe(nombre){
+  return palabras(nombre).slice(0,2).join(" ");
+}
+function telefonosMezclados(){
+  var porTel={};
+  D.alumnos.forEach(function(a){
+    (a.contactos||[]).forEach(function(c){
+      var t=(c.tel||"").replace(/\D/g,"");
+      if(t.length!==10) return;
+      if(!porTel[t]) porTel[t]={ tel:t, alumnos:[], apellidos:{}, contacto:c.nombre||"" };
+      porTel[t].alumnos.push(a);
+      porTel[t].apellidos[apellidosDe(a.nombre)]=1;
+    });
+  });
+  return Object.keys(porTel).map(function(t){ return porTel[t]; })
+    .filter(function(x){ return Object.keys(x.apellidos).length > 1; })
+    .sort(function(a,b){ return b.alumnos.length-a.alumnos.length; });
+}
+
+function pintarRevision(){
+  var cont=$("revisionTel");
+  if(!cont) return;
+  var mezclas=telefonosMezclados();
+  cont.innerHTML="";
+  if(!mezclas.length){
+    cont.innerHTML='<div class="aviso ok">Ningún teléfono está repartido entre apellidos distintos. Cada familia verá solo a sus hijos.</div>';
+    return;
+  }
+  var tot=0; mezclas.forEach(function(m){ tot+=m.alumnos.length; });
+  var enc=document.createElement("div");
+  enc.className="aviso mal";
+  enc.innerHTML="<b>"+mezclas.length+" teléfono(s) ligados a alumnos de apellidos distintos, "+tot+" alumnos en total.</b><br>"+
+    "Quien tenga ese número ve a todos esos alumnos en su app y puede dar de baja su regreso. "+
+    "Revisa si es error de captura o si de verdad es la misma familia: hermanos con apellidos distintos, o un tutor a cargo de varios.";
+  cont.appendChild(enc);
+
+  mezclas.forEach(function(m){
+    var d=document.createElement("div");
+    d.style.cssText="border:1px solid var(--linea);border-left:4px solid var(--no);border-radius:0 8px 8px 0;padding:12px 14px;margin:10px 0;background:#fff";
+    d.innerHTML='<h3 style="margin:0">'+m.tel+(m.contacto?" · "+m.contacto:"")+' <span class="pill">'+m.alumnos.length+' alumnos</span></h3>';
+    m.alumnos.forEach(function(a){
+      var f=document.createElement("div");
+      f.style.cssText="margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:10px";
+      var s=document.createElement("span");
+      s.innerHTML="<b>"+a.nombre+"</b> <span class='chico'>"+(a.seccion||"")+" "+(a.grado||"")+" · "+rutasTexto(a)+"</span>";
+      var b=document.createElement("button");
+      b.className="mini"; b.textContent="Corregir contacto";
+      b.addEventListener("click", function(){
+        editar(a.id);
+        Array.prototype.forEach.call(document.querySelectorAll("nav button"), function(x){
+          if(x.dataset.t==="tAlumnos") x.click();
+        });
+        window.scrollTo(0,0);
+      });
+      f.appendChild(s); f.appendChild(b);
+      d.appendChild(f);
+    });
+    cont.appendChild(d);
+  });
+}
 
 /* ======================= SOLICITUDES, BAJAS Y SALIDAS ======================= */
 var SOLICITUDES=[], BAJAS=[], SALIDAS=[];
