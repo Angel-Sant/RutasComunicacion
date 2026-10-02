@@ -185,6 +185,11 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
     <div class="fila" style="align-items:flex-end">
       <div><h2 style="margin:0">Alumnos registrados</h2><p class="ayuda" style="margin:2px 0 0" id="conteo"></p></div>
       <div style="max-width:200px"><label>Ver ruta</label><select id="filtroRuta"><option value="">Todas (agrupadas)</option></select></div>
+      <div style="max-width:190px"><label>Ver</label><select id="filtroBaja">
+        <option value="activos">Solo activos</option>
+        <option value="bajas">Solo dados de baja</option>
+        <option value="todos">Todos</option>
+      </select></div>
       <div style="max-width:170px"><label>Turno</label><select id="filtroTurno">
         <option value="">Ambos</option><option value="am">Solo mañana</option><option value="pm">Solo tarde</option>
       </select></div>
@@ -900,9 +905,26 @@ function filaAlumno(a, contexto){
   var acc = document.createElement("td");
   var be = document.createElement("button"); be.className = "mini"; be.textContent = "Editar";
   be.addEventListener("click", function(){ editar(a.id); });
+  acc.appendChild(be);
+
+  if(estaDeBaja(a)){
+    var br2 = document.createElement("button"); br2.className = "mini"; br2.textContent = "Reactivar";
+    br2.addEventListener("click", function(){ reactivar(a.id); });
+    acc.appendChild(br2);
+    var et = document.createElement("div");
+    et.style.cssText = "font-size:12px;color:var(--no);font-weight:600;margin-top:4px";
+    et.textContent = "Baja " + a.baja.fecha + (a.baja.motivo ? " · " + a.baja.motivo : "");
+    acc.appendChild(et);
+  } else {
+    var bd = document.createElement("button"); bd.className = "mini"; bd.textContent = "Dar de baja";
+    bd.addEventListener("click", function(){ darDeBaja(a.id); });
+    acc.appendChild(bd);
+  }
+
   var bb = document.createElement("button"); bb.className = "mini rojo"; bb.textContent = "Borrar";
+  bb.title = "Solo para errores de captura. Para quien deja el servicio, usa Dar de baja.";
   bb.addEventListener("click", function(){ borrar(a.id, a.nombre); });
-  acc.appendChild(be); acc.appendChild(bb); tr.appendChild(acc);
+  acc.appendChild(bb); tr.appendChild(acc);
   return tr;
 }
 
@@ -919,7 +941,10 @@ function pintarTabla(){
   var q = $("buscar").value.trim().toLowerCase();
   var tb = $("tbody"); tb.innerHTML = "";
 
+  var vb=$("filtroBaja") ? $("filtroBaja").value : "activos";
   function coincide(a){
+    if(vb==="activos" && estaDeBaja(a)) return false;
+    if(vb==="bajas" && !estaDeBaja(a)) return false;
     return !q || (a.nombre + " " + (a.dirRec||"") + " " + (a.dirEnt||"")).toLowerCase().indexOf(q) !== -1;
   }
 
@@ -955,7 +980,7 @@ function pintarTabla(){
   }
 
   var am = {}, pm = {};
-  D.alumnos.forEach(function(a){
+  activos().forEach(function(a){
     var ra = rutaTurno(a,"am"), rp = rutaTurno(a,"pm");
     if(ra) am[ra] = (am[ra]||0) + 1;
     if(rp) pm[rp] = (pm[rp]||0) + 1;
@@ -966,13 +991,16 @@ function pintarTabla(){
     if(na > cupo || np > cupo) txt += " ¡EXCEDIDA!";
     return txt;
   });
-  var dobles = D.alumnos.filter(function(a){
+  var dobles = activos().filter(function(a){
     return a.am && a.pm && rutaTurno(a,"am") !== rutaTurno(a,"pm");
   }).length;
-  $("conteo").textContent = D.alumnos.length + " alumnos" +
+  var nBajas = D.alumnos.length - activos().length;
+  $("conteo").textContent = activos().length + " alumnos activos" +
+    (nBajas ? " (" + nBajas + " de baja)" : "") +
     (dobles ? " (" + dobles + " con dos rutas distintas)" : "") + " · " + partes.join(" · ");
 }
 $("filtroTurno").addEventListener("change", pintarTabla);
+$("filtroBaja").addEventListener("change", pintarTabla);
 $("filtroRuta").addEventListener("change", pintarTabla);
 $("buscar").addEventListener("input", pintarTabla);
 
@@ -1013,6 +1041,45 @@ $("btnColegio").addEventListener("click", function(){
 });
 
 
+
+
+/* ============ BAJA DE ALUMNOS ============
+   Dar de baja no borra: el alumno sale de las listas, del mapa y de
+   la app de los papás, pero su historial en la bitácora se conserva.
+   Borrar queda solo para errores de captura. */
+function estaDeBaja(a){
+  return !!(a.baja && a.baja.fecha && a.baja.fecha <= hoyISO());
+}
+function activos(){
+  return D.alumnos.filter(function(a){ return !estaDeBaja(a); });
+}
+
+function darDeBaja(id){
+  var a=null;
+  D.alumnos.forEach(function(x){ if(x.id===id) a=x; });
+  if(!a) return;
+  var f=prompt("¿Desde qué fecha deja el transporte "+a.nombre+"?\n\n"+
+               "Formato: 2026-10-15. Deja la de hoy si es a partir de hoy.", hoyISO());
+  if(f===null) return;
+  f=(f||"").trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(f)){ alert("La fecha debe ir como 2026-10-15."); return; }
+  var m=prompt("Motivo de la baja (lo verás en el historial):", "Dejó el servicio");
+  if(m===null) return;
+  a.baja={ fecha:f, motivo:(m||"").trim(), registrado:new Date().toISOString(),
+           por:(usuarioAdmin?usuarioAdmin.email:"") };
+  guardar(); pintarTodo();
+  alert(a.nombre+" queda fuera del transporte a partir del "+f+".\n\n"+
+        "Su lugar se libera y deja de aparecer en las listas. El historial de sus recorridos se conserva.");
+}
+
+function reactivar(id){
+  var a=null;
+  D.alumnos.forEach(function(x){ if(x.id===id) a=x; });
+  if(!a) return;
+  if(!confirm("¿Regresar a "+a.nombre+" al transporte?\n\nVuelve a ocupar un lugar en su ruta.")) return;
+  delete a.baja;
+  guardar(); pintarTodo();
+}
 
 /* ============ EVITAR ALUMNOS DUPLICADOS ============
    Con 96 alumnos y nombres parecidos es fácil capturar dos veces
@@ -1151,7 +1218,7 @@ function lugaresLibres(){
   var r={};
   Object.keys(D.rutas).forEach(function(k){
     var cupo=D.rutas[k].cupo||0, am=0, pm=0;
-    D.alumnos.forEach(function(a){
+    activos().forEach(function(a){
       if(a.am && (a.rutaAM||a.ruta)===k) am++;
       if(a.pm && (a.rutaPM||a.ruta)===k) pm++;
     });
@@ -1245,7 +1312,7 @@ function sincronizarFamilias(){
 }
 
 function hijosDe(tel){
-  return D.alumnos.filter(function(a){
+  return activos().filter(function(a){
     return (a.contactos||[]).some(function(c){ return (c.tel||"").replace(/\D/g,"") === tel; });
   });
 }
@@ -1405,7 +1472,7 @@ function apellidosDe(nombre){
 }
 function telefonosMezclados(){
   var porTel={};
-  D.alumnos.forEach(function(a){
+  activos().forEach(function(a){
     (a.contactos||[]).forEach(function(c){
       var t=(c.tel||"").replace(/\D/g,"");
       if(t.length!==10) return;
@@ -2060,7 +2127,7 @@ function layoutAsientos(cap){
   return filas;
 }
 function ocupantes(ruta, turno){
-  return D.alumnos.filter(function(a){
+  return activos().filter(function(a){
     if(turno === "am" && a.am === false) return false;
     if(turno === "pm" && a.pm === false) return false;
     var r = (turno === "am") ? (a.rutaAM || a.ruta) : (a.rutaPM || a.ruta);

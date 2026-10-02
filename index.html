@@ -490,6 +490,8 @@ function construirParadas(rutaNum, turno){
   var exc=excepcionesDeHoy(), dia=diaHoy(), esAM=(turno==="manana"), items=[];
 
   D.alumnos.forEach(function(a){
+    /* alumnos dados de baja: fuera del recorrido desde su fecha */
+    if(a.baja && a.baja.fecha && a.baja.fecha <= hoy()) return;
     var e=exc[a.id];
     if(e&&e.tipo==="no_asiste") return;
     /* aviso de los papás: no regresa hoy */
