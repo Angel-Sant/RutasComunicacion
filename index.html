@@ -137,6 +137,18 @@ button.linea{background:#fff;color:var(--azul);border:2px solid var(--azul);}
   </div>
 </section>
 
+<section id="pCambios" class="wrap oculto">
+  <div class="tarjeta" style="border-left:6px solid var(--amb)">
+    <div class="cuenta" id="cbCuenta"></div>
+    <h2 id="cbTitulo">Atención: hay cambios para hoy</h2>
+    <p class="meta">Revísalos antes de salir. También los verás marcados en cada parada.</p>
+  </div>
+  <div id="cbLista"></div>
+  <div class="tarjeta">
+    <button class="verde" id="btnCambiosOk">ENTENDIDO, CONTINUAR</button>
+  </div>
+</section>
+
 <section id="pPase" class="wrap oculto">
   <div class="tarjeta" id="paseCab">
     <div class="cuenta" id="pvCuenta"></div>
@@ -244,7 +256,7 @@ var S = { ruta:null, rutaNum:null, aux:null, turno:null, paradas:[], idx:0,
 
 function $(id){ return document.getElementById(id); }
 function ver(id){
-  ["pCarga","pRetomar","pLogin","pQuien","pTurno","pRuta","pPase","pParada","pAviso","pCierre","pResumen"].forEach(function(p){
+  ["pCarga","pRetomar","pLogin","pQuien","pTurno","pRuta","pCambios","pPase","pParada","pAviso","pCierre","pResumen"].forEach(function(p){
     var el=$(p); if(el) el.classList.add("oculto");
   });
   $(id).classList.remove("oculto"); window.scrollTo(0,0);
@@ -291,7 +303,8 @@ function retomar(s){
   ver("pRetomar");
 }
 $("btnRetomar").addEventListener("click", function(){
-  if(S.pantalla==="pase") mostrarPase();
+  if(S.pantalla==="cambios") mostrarCambios(function(){ arrancarRecorrido(); });
+  else if(S.pantalla==="pase") mostrarPase();
   else if(S.pantalla==="aviso" && S.idx<S.paradas.length) mostrarAviso();
   else if(S.idx>=S.paradas.length) irCierre();
   else mostrarParada();
@@ -498,22 +511,42 @@ function construirParadas(rutaNum, turno){
     if(!esAM && BAJAS_PAPAS[a.id]) return;
     if(e&&e.tipo==="solo_am"&&!esAM) return;
     if(e&&e.tipo==="solo_pm"&&esAM) return;
+
+    /* "sí viaja hoy": entra aunque normalmente no le toque */
+    var invitado=false;
+    if(e&&e.tipo==="si_viaja"){
+      var aplicaV=(!e.turno||e.turno==="ambos")||(e.turno==="am"&&esAM)||(e.turno==="pm"&&!esAM);
+      if(!aplicaV) return;
+      if(String(e.ruta)!==String(rutaNum)) return;
+      invitado=true;
+    }
+
     var ruta=esAM?(a.rutaAM||a.ruta):(a.rutaPM||a.ruta);
     if(e&&e.tipo==="cambia_ruta"){
       var aplica=(!e.turno||e.turno==="ambos")||(e.turno==="am"&&esAM)||(e.turno==="pm"&&!esAM);
       if(aplica) ruta=e.ruta;
     }
-    if(!ruta||String(ruta)!==String(rutaNum)) return;
-    if(a.dias&&a.dias.length&&a.dias.indexOf(dia)===-1) return;
-    if(esAM&&a.am===false) return;
-    if(!esAM&&a.pm===false) return;
+    if(!invitado){
+      if(!ruta||String(ruta)!==String(rutaNum)) return;
+      if(a.dias&&a.dias.length&&a.dias.indexOf(dia)===-1) return;
+      if(esAM&&a.am===false) return;
+      if(!esAM&&a.pm===false) return;
+    }
 
     var dir=esAM?(a.dirRec||""):(a.dirEnt||a.dirRec||"");
     var coord=esAM?(a.coordRec||""):(a.coordEnt||a.coordRec||"");
     if(!coord&&a.lat&&a.lng) coord=a.lat+","+a.lng;
     var esPE=esAM?!!a.peRec:!!a.peEnt;
     var nomPE=esAM?(a.ptoRec||""):(a.ptoEnt||"");
-    if(e&&e.tipo==="cambia_parada"){ dir=e.dir; coord=e.coord||""; esPE=false; nomPE=""; }
+    if(e && (e.tipo==="cambia_parada" ||
+             (e.tipo==="cambia_parada_am" && esAM) ||
+             (e.tipo==="cambia_parada_pm" && !esAM))){
+      dir=e.dir; coord=e.coord||""; esPE=false; nomPE="";
+    }
+    if(invitado && e.dir){ dir=e.dir; coord=e.coord||""; esPE=false; nomPE=""; }
+    if(e && e.tipo==="cambia_ruta" && e.dir && String(ruta)===String(rutaNum)){
+      dir=e.dir; coord=e.coord||""; esPE=false; nomPE="";
+    }
 
     var otra="";
     if(a.am&&a.pm&&(a.rutaAM||a.ruta)!==(a.rutaPM||a.ruta))
@@ -522,7 +555,8 @@ function construirParadas(rutaNum, turno){
     items.push({
       id:a.id, nombre:a.nombre, seccion:a.seccion||"", grado:a.grado||"",
       dir:dir, coord:coord, ref:a.ref||"", tutor:a.tutor||"", tel:a.tel||"", email:a.email||"",
-      orden:((e&&e.tipo==="cambia_ruta"&&e.orden)?e.orden:(esAM?(a.ordenAM||a.orden||99):(a.ordenPM||a.orden||99))),
+      orden:((e&&e.orden)?e.orden:(esAM?(a.ordenAM||a.orden||99):(a.ordenPM||a.orden||99))),
+      invitado:invitado,
       ordenPropio:(esAM?!!a.ordenAM:!!a.ordenPM),
       esPE:esPE, nomPE:nomPE, cambio:!!e,
       motivoCambio:(e?(e.motivo||""):""), tipoCambio:(e?e.tipo:""), otraRuta:otra,
@@ -688,6 +722,9 @@ function armarRuta(){
   ver("pRuta");
 }
 $("btnComenzar").addEventListener("click", function(){
+  mostrarCambios(function(){ arrancarRecorrido(); });
+});
+function arrancarRecorrido(){
   if(S.turno==="tarde"){ mostrarPase(); return; }
   pedirPosicion();
   S.inicio=Date.now(); S.idx=0; guardar();
@@ -697,8 +734,106 @@ $("btnComenzar").addEventListener("click", function(){
     else mostrarAviso();
   }
   else mostrarParada();
-});
+}
 
+
+
+/* ---------- resumen de los cambios de hoy ----------
+   Se muestra antes de la lista para que la auxiliar no se entere
+   del cambio hasta estar parada frente a la casa. */
+function cambiosDeHoy(){
+  var esAM=S.turno==="manana", r=[];
+  var exc=excepcionesDeHoy();
+
+  S.paradas.forEach(function(p){
+    p.ninos.forEach(function(n){
+      var e=exc[n.id];
+      if(n.invitado){
+        r.push({ c:"nuevo", t:"Hoy SÍ viaja en tu ruta",
+                 n:n.nombre, d:"Parada "+(n.orden===99?"sin número":n.orden)+" · "+n.dir,
+                 m:(e&&e.motivo)||"" });
+      } else if(e && (e.tipo==="cambia_ruta")){
+        r.push({ c:"nuevo", t:"Viene de otra ruta hoy",
+                 n:n.nombre, d:"Hoy va contigo · "+n.dir, m:e.motivo||"" });
+      } else if(e && (e.tipo==="cambia_parada" ||
+                      (e.tipo==="cambia_parada_am"&&esAM) ||
+                      (e.tipo==="cambia_parada_pm"&&!esAM))){
+        r.push({ c:"ojo", t:(esAM?"Hoy sube en otro lugar":"Hoy baja en otro lugar"),
+                 n:n.nombre, d:n.dir, m:e.motivo||"" });
+      } else if(n.otraRuta){
+        r.push({ c:"info", t:(esAM?"Regresa en otra ruta":"Viene de otra ruta"),
+                 n:n.nombre, d:"Ruta "+n.otraRuta, m:"" });
+      }
+    });
+  });
+
+  /* alumnos que hoy se fueron a otra ruta: su auxiliar de siempre debe saberlo */
+  (D.excepciones&&D.excepciones[hoy()]||[]).forEach(function(e){
+    if(e.tipo!=="cambia_ruta") return;
+    var aplica=(!e.turno||e.turno==="ambos")||(e.turno==="am"&&esAM)||(e.turno==="pm"&&!esAM);
+    if(!aplica) return;
+    var a=null;
+    D.alumnos.forEach(function(x){ if(x.id===e.alumno) a=x; });
+    if(!a) return;
+    var suya=esAM?(a.rutaAM||a.ruta):(a.rutaPM||a.ruta);
+    if(String(suya)!==String(S.rutaNum)) return;          /* no era de esta ruta */
+    if(String(e.ruta)===String(S.rutaNum)) return;        /* se queda aquí */
+    r.push({ c:"fuera", t:"Hoy va en la Ruta "+e.ruta, n:a.nombre,
+             d:"No lo esperes en su parada", m:e.motivo||"" });
+  });
+
+  /* los que hoy no viajan: ya no están en la lista, hay que nombrarlos */
+  (D.excepciones&&D.excepciones[hoy()]||[]).forEach(function(e){
+    if(e.tipo!=="no_asiste" && !(e.tipo==="solo_am"&&!esAM) && !(e.tipo==="solo_pm"&&esAM)) return;
+    var a=null;
+    D.alumnos.forEach(function(x){ if(x.id===e.alumno) a=x; });
+    if(!a) return;
+    var ru=esAM?(a.rutaAM||a.ruta):(a.rutaPM||a.ruta);
+    if(String(ru)!==String(S.rutaNum)) return;
+    r.push({ c:"fuera", t:"Hoy no viaja", n:a.nombre,
+             d:"No lo esperes en su parada", m:e.motivo||"" });
+  });
+
+  /* bajas registradas por los propios papás */
+  Object.keys(BAJAS_PAPAS||{}).forEach(function(id){
+    if(esAM) return;
+    var b=BAJAS_PAPAS[id], a=null;
+    D.alumnos.forEach(function(x){ if(x.id===id) a=x; });
+    if(!a) return;
+    if(String(a.rutaPM||a.ruta)!==String(S.rutaNum)) return;
+    r.push({ c:"fuera", t:"Hoy no regresa", n:a.nombre,
+             d:"Lo avisó "+(b.contacto||"su familia"), m:b.motivo||"" });
+  });
+
+  return r;
+}
+
+function mostrarCambios(despues){
+  var lista=cambiosDeHoy();
+  if(!lista.length){ despues(); return; }
+  var COL={ nuevo:["#1d7a4c","SE AGREGA"], ojo:["#b5730c","CAMBIA"],
+            fuera:["#b02525","NO VIAJA"], info:["#1f5fa9","AVISO"] };
+  $("cbCuenta").textContent="Ruta "+S.rutaNum+" · "+(S.turno==="manana"?"Mañana":"Tarde");
+  $("cbTitulo").textContent=lista.length===1 ? "Atención: hay 1 cambio para hoy"
+                                             : "Atención: hay "+lista.length+" cambios para hoy";
+  var cont=$("cbLista"); cont.innerHTML="";
+  lista.forEach(function(x){
+    var c=COL[x.c]||COL.info;
+    var d=document.createElement("div");
+    d.className="tarjeta";
+    d.style.borderLeft="6px solid "+c[0];
+    d.innerHTML='<span class="chip" style="background:'+c[0]+';color:#fff">'+c[1]+'</span>'+
+      '<div style="font-size:20px;font-weight:800;line-height:1.2;margin:4px 0">'+x.n+'</div>'+
+      '<div style="font-size:17px;font-weight:600;color:'+c[0]+'">'+x.t+'</div>'+
+      '<div class="meta">'+x.d+'</div>'+
+      (x.m?'<div class="meta" style="font-size:14px">Motivo: '+x.m+'</div>':'');
+    cont.appendChild(d);
+  });
+  S.pantalla="cambios"; guardar();
+  try{ if(navigator.vibrate) navigator.vibrate([200,100,200]); }catch(e){}
+  ver("pCambios");
+  $("btnCambiosOk").onclick=function(){ despues(); };
+}
 
 /* ================= PASE DE LISTA DE LA SALIDA (solo tarde) ================= */
 var MOTIVOS_PASE=["No salió del salón","Se fue con sus papás","Enfermería","Actividad extraescolar","No lo encontramos"];
@@ -882,6 +1017,7 @@ function pintarNinos(){
     var etq="";
     if(n.cambio) etq+='<span class="chip alerta">CAMBIO HOY'+(n.motivoCambio?": "+n.motivoCambio:"")+'</span>';
     if(n.otraRuta) etq+='<span class="chip alerta">'+(esAM?"Regresa en R":"Viene de R")+n.otraRuta+'</span>';
+    if(n.invitado) etq+='<span class="chip pe">SOLO HOY</span>';
     var cab='<div class="nm">'+n.nombre+"</div>"+
             '<div class="gr">'+(n.seccion?n.seccion+" "+n.grado:"")+(n.tutor?" · "+n.tutor:"")+"</div>"+etq;
     if(n.estado){

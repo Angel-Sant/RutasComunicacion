@@ -222,6 +222,8 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
     <p class="ayuda">La clave es lo que la auxiliar escribe para entrar. El punto de inicio es donde arranca el recorrido de la mañana.</p>
     <div id="listaRutas"></div>
     <button class="b verde" id="btnRutas">GUARDAR RUTAS</button>
+    <button class="b linea" id="btnRenumerar">REVISAR Y RENUMERAR TODAS LAS PARADAS</button>
+    <p class="chico">Deja las paradas de cada ruta en 1, 2, 3… sin huecos. Los puntos de encuentro conservan su número compartido.</p>
   </div>
 </section>
 
@@ -342,6 +344,25 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
             <option value="pm">Solo la tarde</option>
           </select></div>
           <div><label>Orden de parada (opcional)</label><input id="xOrden" type="number" min="1"></div>
+        </div>
+        <div class="fila">
+          <div><label>Dirección en esa ruta (si es distinta a la suya)</label>
+            <input id="xRutaDir" placeholder="Dejar vacío si sube y baja en su dirección de siempre"></div>
+        </div>
+      </div>
+
+      <div id="xViajaBox" class="oculto">
+        <div class="fila">
+          <div><label>¿Qué turno(s) viaja ese día?</label><select id="xViajaTurno">
+            <option value="ambos">Mañana y tarde</option>
+            <option value="am">Solo la mañana</option>
+            <option value="pm">Solo la tarde</option>
+          </select></div>
+          <div><label>Ruta de ese día</label><select id="xViajaRuta"></select></div>
+          <div><label>Parada (opcional)</label><input id="xViajaOrden" type="number" min="1"></div>
+        </div>
+        <div class="fila">
+          <div><label>Dirección de ese día (si no es la suya)</label><input id="xViajaDir" placeholder="Dejar vacío para usar su dirección de siempre"></div>
         </div>
       </div>
 
@@ -651,7 +672,7 @@ function pintarDias(){
   });
 }
 function llenarSelectRutas(){
-  ["fRutaAM","fRutaPM","filtroRuta","xRuta","mpRuta","xFiltroRuta","famRuta"].forEach(function(id){
+  ["fRutaAM","fRutaPM","filtroRuta","xRuta","xViajaRuta","mpRuta","xFiltroRuta","famRuta"].forEach(function(id){
     var s = $(id); if(!s) return;
     var prev = s.value;
     s.innerHTML = (id === "filtroRuta" || id === "mpRuta" || id === "xFiltroRuta" || id === "famRuta") ? '<option value="">Todas</option>' : "";
@@ -761,11 +782,17 @@ $("btnGuardarAl").addEventListener("click", function(){
   var movAM = insertarParada(a, "am");
   var movPM = insertarParada(a, "pm");
 
+  /* rutas que pueden quedar con huecos: las de antes y las de ahora */
+  var afectadas=[a.rutaAM, a.rutaPM];
   if(editandoId){
+    D.alumnos.forEach(function(x){
+      if(x.id===editandoId){ afectadas.push(x.rutaAM||x.ruta); afectadas.push(x.rutaPM||x.ruta); }
+    });
     for(var i=0;i<D.alumnos.length;i++){ if(D.alumnos[i].id === editandoId){ D.alumnos[i] = a; break; } }
   } else {
     D.alumnos.push(a);
   }
+  var renum = compactarRutas(afectadas);
 
   var notas = [];
   [movAM, movPM].forEach(function(m){
@@ -775,6 +802,7 @@ $("btnGuardarAl").addEventListener("click", function(){
     else if(m.movidos) notas.push("En la " + t + " entra en la parada " + m.desde +
       " y se recorrieron " + m.movidos + " parada(s) de la Ruta " + m.ruta + ".");
   });
+  if(renum) notas.push("Se renumeraron "+renum+" parada(s) para que no queden huecos.");
   if(notas.length) alert(notas.join("\n"));
   guardar();
   var rutaVista = a.rutaAM || a.rutaPM || "";
@@ -813,8 +841,12 @@ function editar(id){
 }
 
 function borrar(id, nombre){
-  if(!confirm("¿Borrar a " + nombre + "? Esto no se puede deshacer.")) return;
+  if(!confirm("¿Borrar a " + nombre + "? Esto no se puede deshacer.\n\n" +
+              "Si deja el servicio, es mejor Dar de baja: conserva su historial.")) return;
+  var r=[];
+  D.alumnos.forEach(function(a){ if(a.id===id){ r.push(a.rutaAM||a.ruta); r.push(a.rutaPM||a.ruta); } });
   D.alumnos = D.alumnos.filter(function(a){ return a.id !== id; });
+  compactarRutas(r);
   guardar(); pintarTabla();
 }
 
@@ -1033,6 +1065,11 @@ $("btnRutas").addEventListener("click", function(){
   guardar(); llenarSelectRutas(); pintarTabla(); pintarMapa();
   alert("Rutas guardadas.");
 });
+$("btnRenumerar").addEventListener("click", function(){
+  var n=compactarRutas();
+  guardar(); pintarTabla(); pintarMapa();
+  alert(n ? ("Se renumeraron "+n+" parada(s).") : "No había huecos: todas las rutas ya estaban en orden.");
+});
 $("btnColegio").addEventListener("click", function(){
   D.colegio.nombre = $("cName").value.trim();
   D.colegio.direccion = $("cDir").value.trim();
@@ -1067,6 +1104,7 @@ function darDeBaja(id){
   if(m===null) return;
   a.baja={ fecha:f, motivo:(m||"").trim(), registrado:new Date().toISOString(),
            por:(usuarioAdmin?usuarioAdmin.email:"") };
+  compactarRutas([a.rutaAM||a.ruta, a.rutaPM||a.ruta]);
   guardar(); pintarTodo();
   alert(a.nombre+" queda fuera del transporte a partir del "+f+".\n\n"+
         "Su lugar se libera y deja de aparecer en las listas. El historial de sus recorridos se conserva.");
@@ -1078,6 +1116,7 @@ function reactivar(id){
   if(!a) return;
   if(!confirm("¿Regresar a "+a.nombre+" al transporte?\n\nVuelve a ocupar un lugar en su ruta.")) return;
   delete a.baja;
+  compactarRutas([a.rutaAM||a.ruta, a.rutaPM||a.ruta]);
   guardar(); pintarTodo();
 }
 
@@ -1150,6 +1189,52 @@ function revisarDuplicado(){
   cont.appendChild(d);
 }
 $("fNombre").addEventListener("input", revisarDuplicado);
+
+
+/* ============ NUMERACIÓN SIN HUECOS ============
+   Si alguien cambia de ruta, se da de baja o se corrige un número,
+   las paradas de esa ruta se renumeran para que queden 1, 2, 3...
+   Los que comparten número (puntos de encuentro) se mueven juntos. */
+function compactarOrden(ruta, turno){
+  if(!ruta) return 0;
+  var cR=(turno==="am")?"rutaAM":"rutaPM";
+  var cO=(turno==="am")?"ordenAM":"ordenPM";
+  var lista=activos().filter(function(a){
+    if(turno==="am" ? !a.am : !a.pm) return false;
+    return (a[cR]||a.ruta)===ruta && (a[cO]||a.orden||99)!==99;
+  });
+  if(!lista.length) return 0;
+
+  var grupos={};
+  lista.forEach(function(a){
+    var o=a[cO]||a.orden||99;
+    if(!grupos[o]) grupos[o]=[];
+    grupos[o].push(a);
+  });
+  var nums=Object.keys(grupos).map(Number).sort(function(x,y){ return x-y; });
+  var cambios=0, n=1;
+  nums.forEach(function(o){
+    grupos[o].forEach(function(a){
+      if((a[cO]||a.orden||99)!==n){ a[cO]=n; cambios++; }
+      else a[cO]=n;
+      if(!a.ordenAM && !a.ordenPM) a.orden=n;
+    });
+    n++;
+  });
+  return cambios;
+}
+
+/* renumera las rutas que pudieron quedar con huecos */
+function compactarRutas(rutas){
+  var tocadas={}, total=0;
+  (rutas||[]).forEach(function(r){ if(r) tocadas[r]=1; });
+  if(!Object.keys(tocadas).length) Object.keys(D.rutas).forEach(function(k){ tocadas[k]=1; });
+  Object.keys(tocadas).forEach(function(r){
+    total+=compactarOrden(r,"am");
+    total+=compactarOrden(r,"pm");
+  });
+  return total;
+}
 
 /* ============ INSERTAR UNA PARADA A MITAD DEL RECORRIDO ============
    Si el número de parada ya está ocupado, los que siguen se recorren
@@ -1813,6 +1898,7 @@ $("btnAddExcep").addEventListener("click", function(){
   if(e.tipo==="cambia_ruta"){
     e.ruta=$("xRuta").value; e.turno=$("xTurno").value;
     var o=parseInt($("xOrden").value,10); if(o) e.orden=o;
+    var dr=$("xRutaDir").value.trim(); if(dr) e.dir=dr;
     if(!e.ruta) err.push("Elige la ruta.");
   }
   if(e.tipo==="cambia_parada"){
@@ -1847,6 +1933,7 @@ $("btnAddExcep").addEventListener("click", function(){
   });
   guardar(); pintarExcep();
   $("xDir").value=""; $("xCoord").value=""; $("xOrden").value="";
+  $("xViajaDir").value=""; $("xViajaOrden").value=""; $("xRutaDir").value="";
   $("xMotivoLibre").value=""; delete $("xMotivoLibre").dataset.sel; $("xQuien").value="";
   pintarMotivos();
   alert("Cambio registrado para "+fechas.length+" día(s).");
@@ -1860,8 +1947,13 @@ $("xSemana").addEventListener("click", function(){
 });
 
 function textoExcep(e){
-  if(e.tipo==="no_asiste") return "no usa el transporte";
-  if(e.tipo==="cambia_ruta") return "va en la Ruta "+e.ruta+
+  if(e.tipo==="no_asiste") return "hoy no viaja";
+  if(e.tipo==="si_viaja") return "SÍ viaja ese día en la Ruta "+e.ruta+
+    (e.turno==="am"?" (solo mañana)":(e.turno==="pm"?" (solo tarde)":""))+
+    (e.orden?" · parada "+e.orden:"")+(e.dir?" · "+e.dir:"");
+  if(e.tipo==="cambia_parada_am") return "sube en "+e.dir+" (mañana)";
+  if(e.tipo==="cambia_parada_pm") return "baja en "+e.dir+" (tarde)";
+  if(e.tipo==="cambia_ruta") return "va en la Ruta "+e.ruta+(e.dir?" · "+e.dir:"")+
     (e.turno&&e.turno!=="ambos"?(e.turno==="am"?" (solo mañana)":" (solo tarde)"):"")+
     (e.orden?" · parada "+e.orden:"");
   if(e.tipo==="cambia_parada") return "sube/baja en "+e.dir;
@@ -2024,6 +2116,7 @@ $("fileCsv").addEventListener("change", function(ev){
       });
       nuevos++;
     }
+    compactarRutas();
     guardar(); pintarTabla(); pintarMapa(); pintarFamilias();
     var msg = '<div class="aviso ok">Se agregaron ' + nuevos + ' alumnos.</div>';
     if(malos.length) msg += '<div class="aviso">Revisa estos, se cargaron pero con datos raros:<br>' + malos.join("<br>") + '</div>';
