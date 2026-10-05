@@ -90,7 +90,9 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
     <label>Correo</label><input id="lgCorreo" type="email" autocomplete="username">
     <label>Contraseña</label><input id="lgPass" type="password" autocomplete="current-password">
     <button class="b verde" id="lgEntrar" style="width:100%">ENTRAR</button>
+    <button class="b linea" id="lgOlvide" style="width:100%">Olvidé mi contraseña</button>
     <div id="lgError" class="aviso mal oculto"></div>
+    <div id="lgOk" class="aviso ok oculto"></div>
   </div>
 </div>
 
@@ -217,6 +219,19 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
     </div>
     <button class="b" id="btnColegio">Guardar</button>
   </div>
+  <div class="card">
+    <h2>Mi cuenta</h2>
+    <p class="ayuda" id="miCuenta"></p>
+    <div class="fila">
+      <div><label>Contraseña actual</label><input id="pwActual" type="password" autocomplete="current-password"></div>
+      <div><label>Nueva contraseña</label><input id="pwNueva" type="password" autocomplete="new-password" placeholder="Mínimo 6 caracteres"></div>
+      <div><label>Repite la nueva</label><input id="pwNueva2" type="password" autocomplete="new-password"></div>
+    </div>
+    <button class="b verde" id="btnCambiarPw">CAMBIAR MI CONTRASEÑA</button>
+    <div id="pwMsg"></div>
+    <p class="chico">Solo cambia la tuya. Para la contraseña de una auxiliar o de otra persona de coordinación, se hace desde la consola de Firebase: Authentication → Usuarios → los tres puntos del renglón → Restablecer contraseña.</p>
+  </div>
+
   <div class="card">
     <h2>Las 6 rutas</h2>
     <p class="ayuda">La clave es lo que la auxiliar escribe para entrar. El punto de inicio es donde arranca el recorrido de la mañana.</p>
@@ -590,6 +605,7 @@ function iniciarNube(){
       return;
     }
     usuarioAdmin = u;
+    if($("miCuenta")) $("miCuenta").textContent = "Sesión iniciada como " + (u.email||"");
     $("loginAdmin").classList.add("oculto");
     $("btnSalirAdmin").classList.remove("oculto");
     estadoNube("Conectando…");
@@ -646,6 +662,61 @@ $("lgEntrar").addEventListener("click", function(){
 $("lgPass").addEventListener("keydown", function(e){ if(e.key==="Enter") $("lgEntrar").click(); });
 $("btnSalirAdmin").addEventListener("click", function(){
   if(confirm("¿Cerrar sesión en esta computadora?")) firebase.auth().signOut().then(function(){ location.reload(); });
+});
+
+
+/* ============ MI CONTRASEÑA ============
+   Cada quien cambia la suya. Firebase pide confirmar la actual,
+   porque si no cualquiera que agarre una sesión abierta podría
+   quedarse con la cuenta. */
+function msgPw(texto, clase){
+  var m=$("pwMsg");
+  m.innerHTML='<div class="aviso '+(clase||"")+'">'+texto+'</div>';
+}
+
+$("btnCambiarPw").addEventListener("click", function(){
+  if(!NUBE || !usuarioAdmin){ msgPw("No hay sesión activa.","mal"); return; }
+  var act=$("pwActual").value, n1=$("pwNueva").value, n2=$("pwNueva2").value;
+  if(!act){ msgPw("Escribe tu contraseña actual.","mal"); return; }
+  if(n1.length < 6){ msgPw("La nueva debe tener al menos 6 caracteres.","mal"); return; }
+  if(n1 !== n2){ msgPw("Las dos contraseñas nuevas no coinciden.","mal"); return; }
+  if(n1 === act){ msgPw("La nueva es igual a la actual.","mal"); return; }
+
+  msgPw("Cambiando…");
+  var cred = firebase.auth.EmailAuthProvider.credential(usuarioAdmin.email, act);
+  usuarioAdmin.reauthenticateWithCredential(cred)
+    .then(function(){ return usuarioAdmin.updatePassword(n1); })
+    .then(function(){
+      $("pwActual").value=""; $("pwNueva").value=""; $("pwNueva2").value="";
+      msgPw("Listo, tu contraseña quedó cambiada. Úsala la próxima vez que entres.","ok");
+    })
+    .catch(function(e){
+      var m={"auth/wrong-password":"La contraseña actual no es correcta.",
+             "auth/invalid-credential":"La contraseña actual no es correcta.",
+             "auth/weak-password":"Esa contraseña es muy débil. Usa al menos 6 caracteres.",
+             "auth/requires-recent-login":"Por seguridad, vuelve a entrar y cámbiala enseguida.",
+             "auth/too-many-requests":"Demasiados intentos. Espera unos minutos.",
+             "auth/network-request-failed":"Sin conexión a internet."}[e.code] || e.message;
+      msgPw(m,"mal");
+    });
+});
+
+$("lgOlvide").addEventListener("click", function(){
+  var c=$("lgCorreo").value.trim();
+  $("lgError").classList.add("oculto");
+  $("lgOk").classList.add("oculto");
+  if(!c){ $("lgError").textContent="Escribe primero tu correo arriba."; $("lgError").classList.remove("oculto"); return; }
+  firebase.auth().sendPasswordResetEmail(c)
+    .then(function(){
+      $("lgOk").innerHTML="Te mandamos un correo a <b>"+c+"</b> para restablecerla. Revisa también la bandeja de spam.";
+      $("lgOk").classList.remove("oculto");
+    })
+    .catch(function(e){
+      $("lgError").textContent = e.code==="auth/user-not-found"
+        ? "No existe esa cuenta."
+        : (e.code==="auth/invalid-email" ? "Ese correo no es válido." : e.message);
+      $("lgError").classList.remove("oculto");
+    });
 });
 
 /* ======================= NAVEGACIÓN ======================= */
