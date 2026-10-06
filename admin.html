@@ -69,6 +69,8 @@ tr:hover td{background:#f8fafc;}
 .chico{font-size:13px;color:var(--suave);}
 code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
 </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -108,6 +110,7 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
   <button data-t="tAlumnos" class="act">Alumnos</button>
   <button data-t="tRutas">Rutas</button>
   <button data-t="tMapa">Mapa de lugares</button>
+  <button data-t="tGeo">Mapa de recorridos</button>
   <button data-t="tFamilias">Familias y códigos</button>
   <button data-t="tSalidas">Solicitudes y salidas <span id="pendCount" class="pill oculto" style="background:#b02525;color:#fff"></span></button>
   <button data-t="tExcep">Cambios del día</button>
@@ -267,6 +270,29 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
   </div>
 </section>
 
+
+
+<!-- ================= MAPA DE RECORRIDOS ================= -->
+<section id="tGeo" class="oculto">
+  <div class="card">
+    <h2>Mapa de recorridos</h2>
+    <p class="ayuda">Las paradas de cada ruta sobre el mapa, en su orden. Se arma con las coordenadas capturadas; los alumnos sin coordenadas no aparecen.</p>
+    <div class="fila" style="align-items:flex-end">
+      <div style="max-width:200px"><label>Ruta</label><select id="geoRuta"></select></div>
+      <div style="max-width:200px"><label>Turno</label><select id="geoTurno">
+        <option value="am">Mañana — recogida</option>
+        <option value="pm">Tarde — entrega</option>
+      </select></div>
+      <div style="max-width:260px;margin-bottom:2px">
+        <button class="b linea" id="btnKml" style="margin:0">DESCARGAR KML</button>
+      </div>
+    </div>
+    <p class="ayuda" id="geoResumen"></p>
+    <div id="mapa" style="height:460px;border-radius:10px;border:1px solid var(--linea);margin-top:10px"></div>
+    <div id="geoLinks" style="margin-top:12px"></div>
+    <p class="chico">La línea punteada solo une las paradas en orden: es referencia visual, no el camino real por calles. Los botones de Google Maps sí trazan el recorrido real.</p>
+  </div>
+</section>
 
 <!-- ================= FAMILIAS ================= -->
 <section id="tFamilias" class="oculto">
@@ -724,8 +750,9 @@ Array.prototype.forEach.call(document.querySelectorAll("nav button"), function(b
   b.addEventListener("click", function(){
     Array.prototype.forEach.call(document.querySelectorAll("nav button"), function(x){ x.classList.remove("act"); });
     b.classList.add("act");
-    ["tAlumnos","tRutas","tMapa","tFamilias","tSalidas","tExcep","tDatos"].forEach(function(s){ $(s).classList.add("oculto"); });
+    ["tAlumnos","tRutas","tMapa","tGeo","tFamilias","tSalidas","tExcep","tDatos"].forEach(function(s){ $(s).classList.add("oculto"); });
     $(b.dataset.t).classList.remove("oculto");
+    if(b.dataset.t==="tGeo") pintarGeo();
     window.scrollTo(0,0);
   });
 });
@@ -743,7 +770,7 @@ function pintarDias(){
   });
 }
 function llenarSelectRutas(){
-  ["fRutaAM","fRutaPM","filtroRuta","xRuta","xViajaRuta","mpRuta","xFiltroRuta","famRuta"].forEach(function(id){
+  ["fRutaAM","fRutaPM","filtroRuta","xRuta","xViajaRuta","mpRuta","xFiltroRuta","famRuta","geoRuta"].forEach(function(id){
     var s = $(id); if(!s) return;
     var prev = s.value;
     s.innerHTML = (id === "filtroRuta" || id === "mpRuta" || id === "xFiltroRuta" || id === "famRuta") ? '<option value="">Todas</option>' : "";
@@ -1424,6 +1451,175 @@ function publicarPerfiles(){
   });
   if(cambiados) estadoNube("Guardado en la nube "+hhmm()+" · "+cambiados+" familia(s) actualizada(s)", "ok");
 }
+
+
+/* ======================= MAPA DE RECORRIDOS ======================= */
+var mapa=null, capaMapa=null;
+
+function coordDe(a, turno){
+  var c=(turno==="am") ? (a.coordRec||"") : (a.coordEnt||a.coordRec||"");
+  if(!c && a.lat && a.lng) c=a.lat+","+a.lng;
+  var m=/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/.exec(c||"");
+  return m ? [parseFloat(m[1]), parseFloat(m[2])] : null;
+}
+
+/* paradas de una ruta y turno, agrupadas y en orden */
+function paradasDeRuta(ruta, turno){
+  var cO=(turno==="am")?"ordenAM":"ordenPM";
+  var lista=activos().filter(function(a){
+    if(turno==="am" ? !a.am : !a.pm) return false;
+    return rutaTurno(a,turno)===ruta;
+  });
+  var grupos={};
+  lista.forEach(function(a){
+    var o=a[cO]||a.orden||99;
+    if(!grupos[o]) grupos[o]={ orden:o, alumnos:[], coord:null, titulo:"", pe:false };
+    var g=grupos[o];
+    g.alumnos.push(a);
+    var pe=(turno==="am")?a.peRec:a.peEnt;
+    var pto=(turno==="am")?a.ptoRec:a.ptoEnt;
+    if(pe){ g.pe=true; if(pto && !g.titulo) g.titulo=pto; }
+    if(!g.titulo) g.titulo=(turno==="am") ? (a.dirRec||"") : (a.dirEnt||a.dirRec||"");
+    if(!g.coord) g.coord=coordDe(a,turno);
+  });
+  return Object.keys(grupos).map(function(k){ return grupos[k]; })
+    .sort(function(x,y){ return x.orden-y.orden; });
+}
+
+function pintarGeo(){
+  if(typeof L==="undefined"){ $("geoResumen").textContent="No se pudo cargar el mapa. Revisa tu conexión."; return; }
+  var ruta=$("geoRuta").value, turno=$("geoTurno").value;
+  var paradas=paradasDeRuta(ruta, turno);
+  var conCoord=paradas.filter(function(p){ return p.coord; });
+  var sinCoord=paradas.length-conCoord.length;
+  var nAl=0; paradas.forEach(function(p){ nAl+=p.alumnos.length; });
+
+  $("geoResumen").innerHTML="Ruta "+ruta+" · "+(turno==="am"?"mañana":"tarde")+" · "+
+    paradas.length+" parada(s), "+nAl+" alumno(s)"+
+    (sinCoord ? ' · <b style="color:var(--amb)">'+sinCoord+" sin coordenadas, no se ven en el mapa</b>" : "");
+
+  if(!mapa){
+    mapa=L.map("mapa").setView([19.35,-99.26], 12);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      { maxZoom:19, attribution:"© OpenStreetMap" }).addTo(mapa);
+  }
+  if(capaMapa) capaMapa.remove();
+  capaMapa=L.layerGroup().addTo(mapa);
+
+  var esc=(D.colegio&&D.colegio.coord) ? D.colegio.coord : null;
+  var puntos=[];
+  conCoord.forEach(function(p,i){
+    puntos.push(p.coord);
+    var icono=L.divIcon({
+      className:"",
+      html:'<div style="background:'+(p.pe?"#1d7a4c":"#1f5fa9")+';color:#fff;width:28px;height:28px;'+
+           'border-radius:50%;display:flex;align-items:center;justify-content:center;font:700 13px sans-serif;'+
+           'border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">'+p.orden+"</div>",
+      iconSize:[28,28], iconAnchor:[14,14]
+    });
+    var nombres=p.alumnos.map(function(a){ return a.nombre; }).join("<br>");
+    L.marker(p.coord,{icon:icono}).addTo(capaMapa)
+      .bindPopup("<b>Parada "+p.orden+(p.pe?" · punto de encuentro":"")+"</b><br>"+
+                 p.titulo+"<br><br>"+nombres);
+  });
+  if(puntos.length>1){
+    L.polyline(puntos,{color:"#1f5fa9",weight:3,opacity:.6,dashArray:"8,8"}).addTo(capaMapa);
+  }
+  if(puntos.length) mapa.fitBounds(L.latLngBounds(puntos).pad(0.15));
+  setTimeout(function(){ mapa.invalidateSize(); }, 150);
+
+  /* enlaces de Google Maps: por tramos, porque solo admite 10 puntos */
+  var cont=$("geoLinks"); cont.innerHTML="";
+  if(conCoord.length<2){ return; }
+  var TRAMO=10, tramos=[];
+  for(var i=0;i<conCoord.length;i+=TRAMO-1){
+    var t=conCoord.slice(i, i+TRAMO);
+    if(t.length>1) tramos.push(t);
+  }
+  var titulo=document.createElement("p");
+  titulo.className="ayuda";
+  titulo.style.margin="0 0 6px";
+  titulo.textContent="Abrir el recorrido real por calles en Google Maps"+
+    (tramos.length>1 ? " (en "+tramos.length+" tramos, por el límite de 10 paradas por enlace)" : "");
+  cont.appendChild(titulo);
+  tramos.forEach(function(t, i){
+    var b=document.createElement("button");
+    b.className="b linea"; b.style.marginRight="8px";
+    b.textContent = tramos.length>1 ? ("Tramo "+(i+1)+" · paradas "+t[0][2]) : "Abrir recorrido completo";
+    b.textContent = tramos.length>1 ? ("Tramo "+(i+1)) : "Abrir recorrido completo";
+    b.addEventListener("click", function(){
+      var o=t[0].join(","), d=t[t.length-1].join(",");
+      var medias=t.slice(1,-1).map(function(c){ return c.join(","); }).join("|");
+      var u="https://www.google.com/maps/dir/?api=1&origin="+o+"&destination="+d+
+            (medias?"&waypoints="+encodeURIComponent(medias):"")+"&travelmode=driving";
+      window.open(u,"_blank");
+    });
+    cont.appendChild(b);
+  });
+}
+
+/* ---------- KML para Google Earth o My Maps ---------- */
+function xmlSeguro(s){
+  return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function kmlDeRuta(ruta, turno){
+  var paradas=paradasDeRuta(ruta,turno).filter(function(p){ return p.coord; });
+  var nombre="Ruta "+ruta+" · "+(turno==="am"?"Mañana":"Tarde");
+  var k=[];
+  k.push('  <Folder>');
+  k.push('    <name>'+xmlSeguro(nombre)+'</name>');
+  paradas.forEach(function(p){
+    var alumnos=p.alumnos.map(function(a){ return a.nombre; }).join(", ");
+    k.push('    <Placemark>');
+    k.push('      <name>'+p.orden+'. '+xmlSeguro(p.titulo||("Parada "+p.orden))+'</name>');
+    k.push('      <description>'+xmlSeguro(alumnos+(p.pe?" — punto de encuentro":""))+'</description>');
+    k.push('      <styleUrl>#'+(p.pe?"pe":"normal")+'</styleUrl>');
+    k.push('      <Point><coordinates>'+p.coord[1]+','+p.coord[0]+',0</coordinates></Point>');
+    k.push('    </Placemark>');
+  });
+  if(paradas.length>1){
+    k.push('    <Placemark>');
+    k.push('      <name>'+xmlSeguro(nombre)+' — orden de paradas</name>');
+    k.push('      <styleUrl>#linea</styleUrl>');
+    k.push('      <LineString><tessellate>1</tessellate><coordinates>');
+    k.push('        '+paradas.map(function(p){ return p.coord[1]+","+p.coord[0]+",0"; }).join(" "));
+    k.push('      </coordinates></LineString>');
+    k.push('    </Placemark>');
+  }
+  k.push('  </Folder>');
+  return k.join("\n");
+}
+
+$("btnKml").addEventListener("click", function(){
+  var todas=confirm("Aceptar = KML con TODAS las rutas y los dos turnos, en carpetas separadas.\n"+
+                    "Cancelar = solo la ruta y el turno que tienes en pantalla.");
+  var partes=[];
+  if(todas){
+    Object.keys(D.rutas).sort().forEach(function(r){
+      ["am","pm"].forEach(function(t){
+        var f=kmlDeRuta(r,t);
+        if(f.indexOf("<Placemark>")!==-1) partes.push(f);
+      });
+    });
+  } else {
+    partes.push(kmlDeRuta($("geoRuta").value, $("geoTurno").value));
+  }
+  var kml='<?xml version="1.0" encoding="UTF-8"?>\n'+
+    '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>\n'+
+    '  <name>Transporte '+xmlSeguro(D.colegio.nombre||"Bilbao")+'</name>\n'+
+    '  <Style id="normal"><IconStyle><color>ff9f4b1f</color><scale>1.1</scale>'+
+    '<Icon><href>http://maps.google.com/mapfiles/kml/paddle/blu-circle.png</href></Icon></IconStyle></Style>\n'+
+    '  <Style id="pe"><IconStyle><color>ff4c7a1d</color><scale>1.2</scale>'+
+    '<Icon><href>http://maps.google.com/mapfiles/kml/paddle/grn-circle.png</href></Icon></IconStyle></Style>\n'+
+    '  <Style id="linea"><LineStyle><color>99a94b1f</color><width>4</width></LineStyle></Style>\n'+
+    partes.join("\n")+'\n</Document></kml>';
+  descargar("transporte-"+(todas?"todas-las-rutas":("ruta"+$("geoRuta").value+"-"+$("geoTurno").value))+".kml",
+            kml, "application/vnd.google-earth.kml+xml");
+});
+
+["geoRuta","geoTurno"].forEach(function(id){
+  $(id).addEventListener("change", pintarGeo);
+});
 
 /* ======================= FAMILIAS Y CÓDIGOS =======================
    Un código por contacto, identificado por su teléfono.
