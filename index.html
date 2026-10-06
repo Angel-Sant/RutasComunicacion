@@ -1033,7 +1033,10 @@ function pintarNinos(){
       var w=d.querySelector(".btns");
       var bs=document.createElement("button");
       bs.className="verde"; bs.textContent=esAM?"SUBIÓ":"ENTREGADO";
-      bs.addEventListener("click", function(){ n.estado="si"; n.ts=Date.now(); guardar(); publicarAvance(n); pintarNinos(); });
+      bs.addEventListener("click", function(){
+        n.estado="si"; n.ts=Date.now();
+        guardar(); publicarAvance(n); avisarAbordo([n], p); pintarNinos();
+      });
       var bn=document.createElement("button");
       bn.className="rojo"; bn.textContent="NO";
       bn.addEventListener("click", function(){ pedirMotivoNo(n); });
@@ -1072,9 +1075,11 @@ function pedirMotivoNo(n){
 }
 
 $("btnTodos").addEventListener("click", function(){
-  var p=S.paradas[S.idx], t=Date.now();
-  p.ninos.forEach(function(n){ if(!n.estado){ n.estado="si"; n.ts=t; publicarAvance(n); } });
-  guardar(); pintarNinos();
+  var p=S.paradas[S.idx], t=Date.now(), nuevos=[];
+  p.ninos.forEach(function(n){
+    if(!n.estado){ n.estado="si"; n.ts=t; publicarAvance(n); nuevos.push(n); }
+  });
+  guardar(); avisarAbordo(nuevos, p); pintarNinos();
 });
 $("btnAtras").addEventListener("click", function(){
   if(S.idx>0){
@@ -1238,6 +1243,24 @@ function avisarPorApp(parada){
           fallas===0?4000:7000);
       }
     });
+  });
+}
+
+
+/* aviso a la familia en cuanto el niño sube (o baja, en la tarde).
+   Se agrupa por familia: si suben dos hermanos a la vez, va un solo mensaje. */
+function avisarAbordo(ninos, parada){
+  if(!ENVIO_REAL) return;
+  var lista=(ninos||[]).filter(function(n){ return n && n.estado==="si"; });
+  if(!lista.length) return;
+  var fams=familiasConCodigo({ ninos:lista });
+  fams.forEach(function(f){
+    var hora0=f.ninos[0].ts||Date.now();
+    enviarAviso("abordo", f, {
+      ruta:String(S.rutaNum), turno:S.turno, punto:(parada?parada.titulo:""),
+      alumno:primerNombre(f.ninos[0].nombre), varios:f.ninos.length>1,
+      hora:hora(hora0)
+    }, parada);
   });
 }
 
