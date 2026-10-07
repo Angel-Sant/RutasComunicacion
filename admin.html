@@ -921,6 +921,9 @@ $("btnGuardarAl").addEventListener("click", function(){
   limpiarForm();
   if(rutaVista){ $("filtroRuta").value = rutaVista; }
   pintarTabla(); pintarMapa(); pintarFamilias();
+  /* si la revisión está abierta, se recalcula sola: así el alumno que
+     acabas de corregir desaparece de la lista en el momento */
+  if($("revisionArranque") && $("revisionArranque").children.length) pintarRevisionArranque();
 });
 
 function editar(id){
