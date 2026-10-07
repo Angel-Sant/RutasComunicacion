@@ -1,7 +1,7 @@
 /* Service worker de Transporte Bilbao.
    SUBE EL NÚMERO DE VERSION cada vez que cambies cualquier archivo:
    es lo que hace que los celulares se enteren de la versión nueva. */
-var VERSION = "tb-v5";
+var VERSION = "tb-v6";
 
 /* archivos propios: se guardan al instalar */
 var BASICOS = [

@@ -315,8 +315,18 @@ $("btnDesechar").addEventListener("click", function(){
   location.reload();
 });
 
+/* Coordinación decide desde el panel si los avisos salen de verdad.
+   Mientras esté apagado, el recorrido se registra igual pero las
+   familias no reciben nada: es el modo para ensayar.
+   Se llama desde los dos caminos por los que entran datos:
+   la nube (escuchar) y el archivo guardado (usarDatos). */
+function aplicarAjustes(d){
+  ENVIO_REAL = !!WORKER_AVISOS && !!(d && d.ajustes && d.ajustes.avisosActivos);
+}
+
 function usarDatos(d, origen){
   D=d;
+  aplicarAjustes(d);
   try{ localStorage.setItem("tb_datos_cache", JSON.stringify(d)); }catch(e){}
   $("origenDatos").textContent=origen;
   var s=hayQueRetomar();
@@ -359,10 +369,13 @@ function escuchar(u){
       ver("pCarga"); return;
     }
     var d=s.data();
-    var huella=JSON.stringify([d.rutas,d.alumnos,d.excepciones]);
+    /* los ajustes entran en la huella: si coordinación enciende o apaga
+       los avisos, este celular se entera en segundos */
+    var huella=JSON.stringify([d.rutas,d.alumnos,d.excepciones,d.ajustes]);
     if(!primera && huella===huellaDatos) return;
     huellaDatos=huella;
     D=d;
+    aplicarAjustes(d);
     try{ localStorage.setItem("tb_datos_cache", JSON.stringify(d)); }catch(e){}
     if(primera){
       primera=false;
@@ -713,7 +726,8 @@ function armarRuta(){
   if(navigator.geolocation && !GEO_NEGADO)
     av+='<div class="aviso ok">Al comenzar, el celular te va a pedir permiso de <b>ubicación</b>. Acepta "mientras uso la app": sirve para que los papás sepan por dónde va el camión. Si no la das, todo lo demás funciona igual.</div>';
   if(CANAL_AVISOS==="app" && !ENVIO_REAL)
-    av+='<div class="aviso">Los avisos a papás se registran, pero todavía <b>no se envían</b>.</div>';
+    av+='<div class="aviso"><b>Modo de ensayo.</b> El recorrido se registra igual, '+
+        'pero a los papás <b>no les llega ningún aviso</b>. Coordinación lo enciende cuando toque.</div>';
   if(CANAL_AVISOS==="app" && ENVIO_REAL)
     av+='<div class="aviso ok">Los avisos a los papás salen solos al avanzar de parada. Solo les llegan a quienes ya activaron la app.</div>';
   if(pe) av+='<div class="aviso ok">'+pe+' punto(s) de encuentro. Ahí no hay que avisar: las familias ya están esperando.</div>';
@@ -1167,7 +1181,10 @@ $("btnAvSeguir").addEventListener("click", mostrarParada);
    El envío lo hace el Worker de Cloudflare: la clave de OneSignal
    nunca viaja dentro de esta app. */
 var WORKER_AVISOS = "https://delicate-lab-a960.miguel-santana-mon.workers.dev";
-var ENVIO_REAL = !!WORKER_AVISOS;
+/* Arranca apagado a propósito. Lo enciende usarDatos() solo si
+   coordinación lo dejó encendido en el panel. Así nadie recibe un
+   aviso por accidente durante los ensayos. */
+var ENVIO_REAL = false;
 
 function codigoDeFamilia(tel){
   var t=(tel||"").replace(/\D/g,"");

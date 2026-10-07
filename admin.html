@@ -245,6 +245,13 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
   </div>
 
   <div class="card">
+    <h2>Avisos a las familias</h2>
+    <p class="ayuda">Mientras esté en ensayo, las auxiliares pueden hacer el recorrido completo y todo se registra igual, pero a los papás no les llega nada. Sirve para capacitar y para el piloto cerrado sin molestar a nadie.</p>
+    <div id="estadoAvisos"></div>
+    <button class="b" id="btnAvisos">—</button>
+  </div>
+
+  <div class="card">
     <h2>Revisión antes de arrancar</h2>
     <p class="ayuda">Repasa todo el padrón y señala lo que impediría que la app funcione bien el primer día. Conviene que no quede nada en rojo antes de repartir los códigos a las familias.</p>
     <button class="b linea" id="btnRevisar">REVISAR TODO EL PADRÓN</button>
@@ -1177,6 +1184,38 @@ $("btnRenumerar").addEventListener("click", function(){
   if(document.getElementById("revisionArranque").children.length) pintarRevisionArranque();
 });
 $("btnRevisar").addEventListener("click", function(){ pintarRevisionArranque(); });
+
+/* ---------- interruptor de avisos a las familias ----------
+   Vive en el padrón, así que la app de la auxiliar lo recoge sola
+   en segundos, sin que nadie tenga que actualizar nada. */
+function avisosEncendidos(){
+  return !!(D.ajustes && D.ajustes.avisosActivos);
+}
+function pintarAvisos(){
+  var caja=$("estadoAvisos"), bot=$("btnAvisos");
+  if(!caja || !bot) return;
+  if(avisosEncendidos()){
+    caja.innerHTML='<div class="aviso ok"><b>Encendidos.</b> Las familias que ya activaron la app '+
+      'están recibiendo los avisos del recorrido.</div>';
+    bot.textContent="APAGAR — volver a modo de ensayo";
+    bot.className="b linea";
+  } else {
+    caja.innerHTML='<div class="aviso"><b>Apagados · modo de ensayo.</b> Las auxiliares pueden hacer el '+
+      'recorrido completo y queda registrado, pero ningún papá recibe avisos.</div>';
+    bot.textContent="ENCENDER LOS AVISOS A LAS FAMILIAS";
+    bot.className="b verde";
+  }
+}
+$("btnAvisos").addEventListener("click", function(){
+  var prender = !avisosEncendidos();
+  if(prender && !confirm("A partir de ahora, cada vez que una auxiliar marque a un niño, "+
+     "su familia va a recibir el aviso en el celular.\n\n¿Encender los avisos?")) return;
+  if(!D.ajustes) D.ajustes={};
+  D.ajustes.avisosActivos = prender;
+  D.ajustes.avisosCambio = { quien: (firebase.auth().currentUser||{}).email || "", cuando: new Date().toISOString() };
+  guardar();
+  pintarAvisos();
+});
 $("btnColegio").addEventListener("click", function(){
   D.colegio.nombre = $("cName").value.trim();
   D.colegio.direccion = $("cDir").value.trim();
@@ -2609,7 +2648,8 @@ function paquete(){
     rutas: D.rutas,
     familias: D.familias || {},
     alumnos: D.alumnos,
-    excepciones: D.excepciones
+    excepciones: D.excepciones,
+    ajustes: D.ajustes || {}
   };
 }
 $("btnPublicar").addEventListener("click", function(){
@@ -2819,6 +2859,7 @@ $("mpRuta").addEventListener("change", pintarMapa);
 function pintarTodo(){
   pintarDias(); llenarSelectRutas(); pintarRutas();
   pintarTabla(); pintarExcep(); pintarMapa(); pintarFamilias(); refrescarEtiquetas(); pintarMotivos();
+  pintarAvisos();
 }
 var panelListo = false;
 function arrancarPanel(){
