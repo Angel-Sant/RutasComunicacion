@@ -243,6 +243,13 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
     <button class="b linea" id="btnRenumerar">REVISAR Y RENUMERAR TODAS LAS PARADAS</button>
     <p class="chico">Deja las paradas de cada ruta en 1, 2, 3… sin huecos. Los puntos de encuentro conservan su número compartido.</p>
   </div>
+
+  <div class="card">
+    <h2>Revisión antes de arrancar</h2>
+    <p class="ayuda">Repasa todo el padrón y señala lo que impediría que la app funcione bien el primer día. Conviene que no quede nada en rojo antes de repartir los códigos a las familias.</p>
+    <button class="b linea" id="btnRevisar">REVISAR TODO EL PADRÓN</button>
+    <div id="revisionArranque"></div>
+  </div>
 </section>
 
 
@@ -1167,7 +1174,9 @@ $("btnRenumerar").addEventListener("click", function(){
   var n=compactarRutas();
   guardar(); pintarTabla(); pintarMapa();
   alert(n ? ("Se renumeraron "+n+" parada(s).") : "No había huecos: todas las rutas ya estaban en orden.");
+  if(document.getElementById("revisionArranque").children.length) pintarRevisionArranque();
 });
+$("btnRevisar").addEventListener("click", function(){ pintarRevisionArranque(); });
 $("btnColegio").addEventListener("click", function(){
   D.colegio.nombre = $("cName").value.trim();
   D.colegio.direccion = $("cDir").value.trim();
@@ -1878,6 +1887,205 @@ function pintarRevision(){
     });
     cont.appendChild(d);
   });
+}
+
+/* ======================= REVISIÓN ANTES DE ARRANCAR =======================
+   Recorre todo el padrón y junta lo que impediría operar el primer día.
+   Cada hallazgo trae el botón para ir directo al alumno y corregirlo.      */
+
+function contactosDeAlumno(a){
+  if(a.contactos && a.contactos.length) return a.contactos;
+  if(a.tel || a.email) return [{ nombre:a.tutor||"", tel:a.tel||"", correo:a.email||"" }];
+  return [];
+}
+
+function revisionDelPadron(){
+  var graves=[], avisos=[], lista=activos();
+
+  function agrega(bolsa, titulo, detalle, alumnos){
+    /* un alumno puede caer dos veces en la misma regla (por la mañana y por
+       la tarde); en la lista debe salir una sola vez */
+    var vistos={}, unicos=[];
+    (alumnos||[]).forEach(function(a){ if(!vistos[a.id]){ vistos[a.id]=1; unicos.push(a); } });
+    if(!unicos.length) return;
+    bolsa.push({ titulo:titulo, detalle:detalle, alumnos:unicos });
+  }
+
+  /* --- 1. contactos: sin ellos, nadie recibe el aviso --- */
+  var sinContacto=[], telMal=[], sinCorreo=[];
+  lista.forEach(function(a){
+    var cs=contactosDeAlumno(a);
+    if(!cs.length){ sinContacto.push(a); return; }
+    var algunTel=false, algunCorreo=false;
+    cs.forEach(function(c){
+      var t=(c.tel||"").replace(/\D/g,"");
+      if(t) { algunTel=true; if(t.length!==10) telMal.push(a); }
+      if((c.correo||"").indexOf("@")>0) algunCorreo=true;
+    });
+    if(!algunTel) sinContacto.push(a);
+    if(!algunCorreo) sinCorreo.push(a);
+  });
+  agrega(graves, "Sin teléfono de contacto",
+    "Sin un teléfono de 10 dígitos no se genera código de familia, así que estos papás no pueden entrar a la app ni recibir avisos.", sinContacto);
+  agrega(graves, "Teléfono con número de dígitos equivocado",
+    "Debe ser de 10 dígitos, sin lada internacional ni espacios.", telMal);
+  agrega(avisos, "Sin correo de contacto",
+    "Los avisos de la app sí les llegan. El correo solo hace falta si más adelante se quiere mandar el resumen de la ruta.", sinCorreo);
+
+  /* --- 2. dirección y coordenadas --- */
+  var sinDir=[], sinCoord=[];
+  lista.forEach(function(a){
+    if(a.am && !(a.dirRec||"").trim()) sinDir.push(a);
+    if(a.pm && !((a.dirEnt||"").trim() || (a.dirRec||"").trim())) sinDir.push(a);
+    var cAM = a.coordRec || ((a.lat&&a.lng) ? a.lat+","+a.lng : "");
+    if(!/-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?/.test(cAM)) sinCoord.push(a);
+  });
+  agrega(graves, "Sin dirección de recogida o de entrega",
+    "La auxiliar no sabría a dónde ir. Es el dato que lee en cada parada.", sinDir);
+  agrega(avisos, "Sin coordenadas GPS",
+    "La app funciona igual con la dirección escrita, pero sin coordenadas no sale el botón «Ver en el mapa» ni aparecen en el mapa de recorridos.", sinCoord);
+
+  /* --- 3. turnos y días --- */
+  var sinTurno=[], sinDias=[];
+  lista.forEach(function(a){
+    if(!a.am && !a.pm) sinTurno.push(a);
+    if(!(a.dias||[]).length) sinDias.push(a);
+  });
+  agrega(graves, "Sin turno marcado",
+    "No está ni en la mañana ni en la tarde: no aparecería en ninguna lista.", sinTurno);
+  agrega(graves, "Sin días marcados",
+    "No aparecería ningún día de la semana.", sinDias);
+
+  /* --- 4. ruta y orden de parada --- */
+  var sinRuta=[], sinOrden=[];
+  lista.forEach(function(a){
+    if(a.am && !rutaTurno(a,"am")) sinRuta.push(a);
+    if(a.pm && !rutaTurno(a,"pm")) sinRuta.push(a);
+    var oA = a.ordenAM||a.orden||99, oP = a.ordenPM||a.orden||99;
+    if((a.am && oA===99) || (a.pm && oP===99)) sinOrden.push(a);
+  });
+  agrega(graves, "Viaja en un turno pero no tiene ruta asignada", "", sinRuta);
+  agrega(graves, "Sin orden de parada",
+    "Queda al final de la lista, después de todos los demás. La auxiliar lo vería fuera del recorrido.", sinOrden);
+
+  /* --- 5. huecos en la numeración, por ruta y turno --- */
+  var huecos=[];
+  Object.keys(D.rutas).forEach(function(r){
+    ["am","pm"].forEach(function(t){
+      var nums={};
+      lista.forEach(function(a){
+        if(rutaTurno(a,t)!==r) return;
+        var o = (t==="am") ? (a.ordenAM||a.orden||99) : (a.ordenPM||a.orden||99);
+        if(o!==99) nums[o]=1;
+      });
+      var ks=Object.keys(nums).map(Number).sort(function(x,y){ return x-y; });
+      if(!ks.length) return;
+      var faltan=[];
+      for(var i=1;i<=ks[ks.length-1];i++) if(!nums[i]) faltan.push(i);
+      if(faltan.length) huecos.push("Ruta "+r+" · "+(t==="am"?"mañana":"tarde")+": falta la parada "+faltan.join(", la "));
+    });
+  });
+  if(huecos.length) avisos.push({ titulo:"Huecos en la numeración de paradas",
+    detalle:"No impide operar, pero confunde a la auxiliar. El botón «Revisar y renumerar todas las paradas» lo arregla de un golpe.",
+    textos:huecos, alumnos:[] });
+
+  /* --- 6. cupo de cada ruta --- */
+  var libres=lugaresLibres(), pasados=[];
+  Object.keys(libres).forEach(function(r){
+    if(libres[r].libresAM < 0) pasados.push("Ruta "+r+" en la mañana: "+(-libres[r].libresAM)+" alumno(s) de más sobre un cupo de "+libres[r].cupo);
+    if(libres[r].libresPM < 0) pasados.push("Ruta "+r+" en la tarde: "+(-libres[r].libresPM)+" alumno(s) de más sobre un cupo de "+libres[r].cupo);
+  });
+  if(pasados.length) graves.push({ titulo:"Rutas con más alumnos que lugares",
+    detalle:"Hay que mover alumnos de ruta o revisar el cupo capturado.", textos:pasados, alumnos:[] });
+
+  /* --- 7. posibles duplicados --- */
+  var vistos={}, dup=[];
+  lista.forEach(function(a){
+    var k=(a.nombre||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z]/g,"");
+    if(!k) return;
+    if(vistos[k]) dup.push(a); else vistos[k]=a;
+  });
+  agrega(graves, "Aparecen dos veces con el mismo nombre",
+    "Si de verdad son dos alumnos distintos, no pasa nada. Si es el mismo capturado dos veces, ocupa dos lugares y su familia recibe los avisos duplicados.", dup);
+
+  /* --- 8. familias sin código --- */
+  var sinCodigo=[];
+  lista.forEach(function(a){
+    contactosDeAlumno(a).forEach(function(c){
+      var t=(c.tel||"").replace(/\D/g,"");
+      if(t.length===10 && !(D.familias||{})[t] && sinCodigo.indexOf(a)<0) sinCodigo.push(a);
+    });
+  });
+  agrega(graves, "Contacto sin código de familia",
+    "Se arregla entrando a «Familias y códigos»: los códigos se generan solos al abrir esa pestaña.", sinCodigo);
+
+  return { graves:graves, avisos:avisos, total:lista.length };
+}
+
+function pintarRevisionArranque(){
+  var cont=$("revisionArranque");
+  if(!cont) return;
+  var r=revisionDelPadron();
+  cont.innerHTML="";
+
+  var res=document.createElement("div");
+  res.className = "aviso " + (r.graves.length ? "mal" : "ok");
+  if(!r.graves.length && !r.avisos.length){
+    res.innerHTML="<b>Revisados "+r.total+" alumnos y no encontré nada pendiente.</b><br>El padrón está listo para repartir códigos y empezar el piloto.";
+  } else if(!r.graves.length){
+    res.innerHTML="<b>Revisados "+r.total+" alumnos. Nada que impida arrancar.</b><br>Quedan "+r.avisos.length+" detalle(s) menores, que puedes dejar para después.";
+  } else {
+    res.innerHTML="<b>Revisados "+r.total+" alumnos. Hay "+r.graves.length+" cosa(s) por corregir antes de arrancar.</b><br>Abajo está cada una, con el botón para ir al alumno.";
+  }
+  cont.appendChild(res);
+
+  function bloque(h, grave){
+    var d=document.createElement("div");
+    d.style.cssText="border:1px solid var(--linea);border-left:4px solid "+(grave?"var(--no)":"#A8690F")+
+      ";border-radius:0 8px 8px 0;padding:12px 14px;margin:10px 0;background:#fff";
+    var cuenta = h.alumnos.length ? h.alumnos.length : (h.textos||[]).length;
+    d.innerHTML='<h3 style="margin:0">'+h.titulo+' <span class="pill">'+cuenta+'</span></h3>'+
+      (h.detalle ? '<p class="chico" style="margin:6px 0 0">'+h.detalle+'</p>' : "");
+    (h.textos||[]).forEach(function(t){
+      var p=document.createElement("div");
+      p.style.cssText="margin-top:8px"; p.textContent="• "+t;
+      d.appendChild(p);
+    });
+    h.alumnos.forEach(function(a){
+      var f=document.createElement("div");
+      f.style.cssText="margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:10px";
+      var s=document.createElement("span");
+      s.innerHTML="<b>"+a.nombre+"</b> <span class='chico'>"+(a.seccion||"")+" "+(a.grado||"")+
+        (rutasTexto(a)?" · "+rutasTexto(a):"")+"</span>";
+      var b=document.createElement("button");
+      b.className="mini"; b.textContent="Corregir";
+      b.addEventListener("click", function(){
+        editar(a.id);
+        Array.prototype.forEach.call(document.querySelectorAll("nav button"), function(x){
+          if(x.dataset.t==="tAlumnos") x.click();
+        });
+        window.scrollTo(0,0);
+      });
+      f.appendChild(s); f.appendChild(b);
+      d.appendChild(f);
+    });
+    return d;
+  }
+
+  if(r.graves.length){
+    var h1=document.createElement("h3");
+    h1.style.cssText="margin:18px 0 0;color:var(--no)";
+    h1.textContent="Hay que corregirlo antes de arrancar";
+    cont.appendChild(h1);
+    r.graves.forEach(function(h){ cont.appendChild(bloque(h, true)); });
+  }
+  if(r.avisos.length){
+    var h2=document.createElement("h3");
+    h2.style.cssText="margin:18px 0 0;color:#A8690F";
+    h2.textContent="Se puede arrancar así, pero conviene revisarlo";
+    cont.appendChild(h2);
+    r.avisos.forEach(function(h){ cont.appendChild(bloque(h, false)); });
+  }
 }
 
 /* ======================= SOLICITUDES, BAJAS Y SALIDAS ======================= */

@@ -867,8 +867,14 @@ function mostrarPase(){
 
 function ninosDelPase(){
   var r=[];
-  S.paradas.forEach(function(p){ p.ninos.forEach(function(n){ r.push(n); }); });
-  return r.sort(function(a,b){ return a.nombre.localeCompare(b.nombre); });
+  S.paradas.forEach(function(p,i){ p.ninos.forEach(function(n){ r.push({n:n, p:i}); }); });
+  /* orden de bajada: primero quien baja primero. Dentro de una misma
+     parada, por nombre, para que la lista sea fácil de leer. */
+  r.sort(function(a,b){
+    if(a.p!==b.p) return a.p-b.p;
+    return a.n.nombre.localeCompare(b.n.nombre);
+  });
+  return r.map(function(x){ return x.n; });
 }
 
 function pintarPase(){
