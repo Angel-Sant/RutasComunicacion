@@ -328,6 +328,9 @@ code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:13px;}
       </table>
     </div>
     <button class="b linea" id="btnCopiarTodos">COPIAR TODOS LOS QUE FALTAN POR INVITAR</button>
+    <button class="b linea" id="btnRepublicar">VOLVER A PUBLICAR TODOS LOS PERFILES</button>
+    <p class="chico">Cada familia tiene en la nube un documento con sus hijos y los lugares libres de cada ruta: es lo que la app de papás necesita para mostrarles los botones de "hoy no regresa" y "pedir un cambio". Normalmente se publica solo. Usa este botón si a un papá le aparece <i>"Todavía no podemos mostrar las opciones de su familia"</i>.</p>
+    <div id="msgRepublicar"></div>
   </div>
 
   <div class="card">
@@ -1483,24 +1486,43 @@ function perfilDe(tel){
 }
 
 /* solo se suben los perfiles que cambiaron, para no gastar escrituras */
-function publicarPerfiles(){
-  if(!NUBE) return;
+/* Sube el perfil de cada familia: lo que la app de papás necesita para
+   mostrarles sus hijos y sus opciones. Con todas=true se resuben todos,
+   sin mirar las huellas, y se informa de verdad cómo salió cada uno. */
+function publicarPerfiles(todas){
+  if(!NUBE){
+    if(todas) alert("No hay conexión con la nube o no has entrado con tu cuenta de coordinación.");
+    return Promise.resolve({ok:0, mal:0});
+  }
   var db=firebase.firestore(), huellas={};
   try{ huellas=JSON.parse(localStorage.getItem("tb_huellas_perfil")||"{}"); }catch(e){}
-  var cambiados=0;
+
+  var tareas=[], intentos=0;
   Object.keys(D.familias||{}).forEach(function(tel){
     if(!hijosDe(tel).length) return;
     var p=perfilDe(tel);
     var sinFecha=JSON.stringify([p.codigo,p.contacto,p.hijos,p.rutas]);
-    if(huellas[tel]===sinFecha) return;
-    db.collection("familias").doc(p.codigo).collection("datos").doc("perfil")
-      .set(JSON.parse(JSON.stringify(p)))
-      .then(function(){ huellas[tel]=sinFecha;
-        try{ localStorage.setItem("tb_huellas_perfil", JSON.stringify(huellas)); }catch(e){} })
-      .catch(function(){});
-    cambiados++;
+    if(!todas && huellas[tel]===sinFecha) return;
+    intentos++;
+    tareas.push(
+      db.collection("familias").doc(p.codigo).collection("datos").doc("perfil")
+        .set(JSON.parse(JSON.stringify(p)))
+        .then(function(){ huellas[tel]=sinFecha; return {ok:true}; })
+        .catch(function(e){ return {ok:false, codigo:p.codigo, error:(e&&(e.code||e.message))||"error"}; })
+    );
   });
-  if(cambiados) estadoNube("Guardado en la nube "+hhmm()+" · "+cambiados+" familia(s) actualizada(s)", "ok");
+
+  return Promise.all(tareas).then(function(r){
+    try{ localStorage.setItem("tb_huellas_perfil", JSON.stringify(huellas)); }catch(e){}
+    var bien=r.filter(function(x){ return x.ok; }).length;
+    var mal=r.filter(function(x){ return !x.ok; });
+    if(mal.length){
+      estadoNube(bien+" perfil(es) subidos · "+mal.length+" fallaron ("+mal[0].error+")", "mal");
+    } else if(intentos){
+      estadoNube("Guardado en la nube "+hhmm()+" · "+bien+" familia(s) actualizada(s)", "ok");
+    }
+    return {ok:bien, mal:mal.length, detalle:mal[0]||null};
+  });
 }
 
 
@@ -1861,6 +1883,25 @@ $("btnCopiarTodos").addEventListener("click", function(){
   if(navigator.clipboard) navigator.clipboard.writeText(t.join("\n\n"));
   $("btnCopiarTodos").textContent = t.length + " INVITACIONES COPIADAS";
   setTimeout(function(){ $("btnCopiarTodos").textContent = "COPIAR TODOS LOS QUE FALTAN POR INVITAR"; }, 2500);
+});
+
+$("btnRepublicar").addEventListener("click", function(){
+  var b=$("btnRepublicar"), m=$("msgRepublicar");
+  b.disabled=true; b.textContent="PUBLICANDO…";
+  m.innerHTML='<div class="aviso">Subiendo los perfiles de todas las familias…</div>';
+  publicarPerfiles(true).then(function(r){
+    b.disabled=false; b.textContent="VOLVER A PUBLICAR TODOS LOS PERFILES";
+    if(r.mal){
+      m.innerHTML='<div class="aviso mal"><b>'+r.ok+' perfil(es) subidos, '+r.mal+' fallaron.</b><br>'+
+        'El primer error fue: <code>'+((r.detalle&&r.detalle.error)||"desconocido")+'</code>.<br>'+
+        'Si dice <i>permission-denied</i>, esta cuenta no tiene permiso de coordinación en las reglas de Firebase.</div>';
+    } else if(!r.ok){
+      m.innerHTML='<div class="aviso mal">No se subió ningún perfil. Revisa que haya familias con hijos capturados.</div>';
+    } else {
+      m.innerHTML='<div class="aviso ok"><b>Listo: '+r.ok+' perfil(es) publicados.</b><br>'+
+        'Pide al papá que cierre la app por completo y la vuelva a abrir con su código.</div>';
+    }
+  });
 });
 
 
