@@ -546,10 +546,19 @@ function entrar(cod, silencioso){
 /* La app de papás ya no lee el padrón completo (las reglas no lo permiten,
    y con razón: ahí están los datos de todos los alumnos).
    Coordinación le publica a cada familia un documento con solo lo suyo. */
+/* Por qué no se pudieron cargar los datos. Sirve para que el aviso
+   diga algo útil en vez de dejar a todos adivinando. */
+var MOTIVO_SIN_DATOS = "";
+
 function cargarColegio(cod){
+  MOTIVO_SIN_DATOS = "";
   return db.collection("familias").doc(cod).collection("datos").doc("perfil").get()
     .then(function(s){
-      if(!s.exists){ DATOS_COLEGIO=null; return; }
+      if(!s.exists){
+        DATOS_COLEGIO=null;
+        MOTIVO_SIN_DATOS="no-existe";
+        return;
+      }
       var p=s.data();
       DATOS_COLEGIO=p;
       MIS_ALUMNOS=(p.hijos||[]).map(function(x){
@@ -561,7 +570,10 @@ function cargarColegio(cod){
       if(p.colegio && p.colegio.nombre) $("hdSub").textContent=p.colegio.nombre;
       if(p.coordinadores && p.coordinadores.length) COORDINADORES=p.coordinadores;
     })
-    .catch(function(){ DATOS_COLEGIO=null; });
+    .catch(function(e){
+      DATOS_COLEGIO=null;
+      MOTIVO_SIN_DATOS=(e && (e.code || e.message)) || "error";
+    });
 }
 
 function escuchar(cod, silencioso){
@@ -650,8 +662,17 @@ function pintarAcciones(){
     if(DATOS_COLEGIO===null){
       var av=document.createElement("div");
       av.className="tarjeta";
+      var pista = "";
+      if(MOTIVO_SIN_DATOS==="permission-denied")
+        pista='<br><span style="font-size:12px;opacity:.8">Las reglas de Firebase no permiten leer este documento '+
+              '(permission-denied). Hay que publicar las reglas actualizadas.</span>';
+      else if(MOTIVO_SIN_DATOS==="no-existe")
+        pista='<br><span style="font-size:12px;opacity:.8">No hay perfil publicado para el código '+
+              (codigoActual||"")+'. Coordinación debe usar "Volver a publicar todos los perfiles".</span>';
+      else if(MOTIVO_SIN_DATOS)
+        pista='<br><span style="font-size:12px;opacity:.8">Detalle técnico: '+MOTIVO_SIN_DATOS+'</span>';
       av.innerHTML='<div class="aviso">Todavía no podemos mostrar las opciones de su familia.<br>'+
-        'Si acaba de recibir su código, inténtelo más tarde o avísenos.</div>';
+        'Si acaba de recibir su código, inténtelo más tarde o avísenos.'+pista+'</div>';
       cont.appendChild(av);
     }
     return;
